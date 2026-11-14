@@ -34,6 +34,39 @@ Restore FlowDE from the backup: `git clone flowde-all-branches.bundle restored` 
 
 ## Project 1: TilesDE (top priority, owner's latest request)
 
+## TilesDE current state (final handoff, 2026-11-14)
+
+**Goal.** A Windows-Phone-style tiles shell (Qt 6.8 / QML) for phones, with own colours and no Microsoft assets. Default accent terracotta `#D97757`, Inter font.
+
+**What exists (commits d8f9291 import, b392a99 tiles shell, 5e8f5c9 review fixes; nothing pushed, no remote).** In `shell/qml/`: Main, Theme (Tiles default, 12 accents, old themes kept), StartScreen (tile grid, edit mode, pin, resize, reorder, turnstile), MetroTile (4 sizes, perspective flip, press tilt), TileGlyph (26 Canvas glyphs), TileGallery, AllApps (alphabetical list, letter squares, AlphaJump, pin menu), AlphaJump, HomeScreen, LockScreen, Shade (Action Centre), AppSwitcher (2 columns), AppPage, NavBar, StatusBar, GestureBar, Toggle, SliderRow, GlassPanel, GlassIcon, AppIcon, Wallpaper. C++ in `shell/src/` (AppModel, Services mocked, main.cpp). `compositor/` is a Rust Smithay skeleton with gesture code.
+
+**Build and run.** VM only, see "How to test TilesDE". `~/fedeos/tilesde/shell/sync-build.sh`, then `~/fedeos/vm 'bash ~/flowde-shell-build/tools/run-shell.sh'`, then `shots.sh`. Binary still `flowde-shell`. Check `/tmp/shell.log` for QML warnings (last build: none).
+
+**Screenshots in `docs/screens/`.** m1-tiles.png, t-start.png, t-start-flip.png, t-edit.png, t-apps.png, t-alpha.png, t-lock.png, t-centre.png, t-switcher.png, t-search.png, t-app.png, t-app-settings.png. Only start, flip, apps, centre were visually confirmed; the rest were retaken but not read.
+
+**Known defects.**
+- Edit mode: dragMa uses preventStealing, Start cannot scroll while dragging a tile; edit resize button glyph not state-specific.
+- Turnstile app open/close is orthographic (no perspective).
+- Start grid can end in a partial row at max scroll.
+- Tile order and size are not persisted; no personalisation page or theme file.
+- Lock wallpaper is plain (no vector scene); clear-all has no staggered slide-out; back face not lazy-loaded.
+- No debug touch-injection command; touch paths only code-reviewed.
+- Light scheme, reduceMotion, other accents and old themes not screenshotted after the Theme edit.
+- Toggle/SliderRow still glass-styled under Tiles when `Theme.paper` is false.
+- Names `flowde-shell` / `flowde-shell-build` not renamed.
+
+**Ranked next steps.**
+1. Read the unread screenshots (lock, switcher, search, app, edit, alpha) and fix visible defects.
+2. Add a touch-injection socket command; exercise reorder, hold-drag, pager swipe, lock bounce, shade drag.
+3. Fix edit-mode drag vs scroll.
+4. Screenshot light scheme, reduceMotion, other accents, old themes; fix regressions.
+5. Persist tile layout and accent; build the personalisation page.
+6. Perspective turnstile; staggered clear-all; lazy back face; wallpaper scene.
+7. Restyle Toggle/SliderRow for Tiles; rename binary consistently or not at all.
+8. Hook the shell to the real compositor (`compositor/`) with real app launching.
+
+**Owner should test on a real phone or compositor.** Touch press tilt and flip feel; long-press into edit mode, drag to reorder and resize; swipe left to All Apps and back; alphabet jump; lock swipe-up bounce; Action Centre pull-down and swipe-away; app open/close turnstile smoothness; switcher close; NavBar back/home/search; frame rate at native resolution (`FLOWDE_FPS=1`); text legibility and tile sizes at the real DPI; real gesture edges from the compositor (`compositor/check.sh` for unit tests).
+
 ## TilesDE progress log
 
 ### M1 Foundation: Tiles theme, MetroTile, pipeline
@@ -85,7 +118,7 @@ Build and test (nothing builds on the Mac, use the VM):
 ```
 `sync-build.sh` still points at the old `flowde-shell-build` directory and binary name `flowde-shell`; renaming to `tiles-shell` is optional, do it consistently in CMake, tools and docs or not at all.
 
-Target design (not yet implemented, nothing in `tilesde` has been changed from FlowDE except the import):
+Target design (now implemented, see "Current state" above; kept as the spec):
 - Start screen: black background, 4 small-tile columns across the width with small gaps. Tile sizes small (1x1), medium (2x2), wide (4x2), large (4x4). Solid accent-colour tiles with a white line glyph and a label bottom-left. Default accent: terracotta `#D97757` (owner's brand), selectable accent palette in settings. Optional translucent tiles showing the wallpaper.
 - Live tiles: staggered flip animation (rotate about X) every few seconds, showing mock content (calendar, weather, mail count, photos).
 - Tile interaction: press tilts toward the touch point (small 3D tilt plus scale 0.96); long-press enters edit mode (tiles shrink, unpin button, resize corner, drag to reorder, grid reflows).
@@ -151,6 +184,25 @@ Target design (not yet implemented, nothing in `tilesde` has been changed from F
 7. The commit message has no trailers and the author is the repo-local git config.
 
 **Next agent should.** Test with real touch input (reorder, press-and-hold, pager swipe, NavBar, lock swipe, Action Centre swipe-away). Fix the all-apps arrow overlap. Screenshot the light scheme, `reduceMotion` and other accents, and re-check the old themes. Add perspective to the turnstile and review the full animation. Make search open All Apps with a filter field. Persist tile order and size. Then build the personalisation page and persisted theme file described in the design references section.
+
+### M4 Review: findings fixed
+
+**Goal of this milestone.** Work through the review of the TilesDE shell (36 findings) so the Start screen, All Apps, lock, Action Centre and switcher match the Tiles design references and behave correctly, and keep the VM build clean.
+
+**What was done.** Nearly all findings were fixed and committed as 5e8f5c9 "TilesDE: review fixes" (author Mandrusia, no trailers, not pushed). Files touched: Main, StartScreen, HomeScreen, MetroTile, TileGlyph, AllApps, Shade, NavBar, StatusBar, LockScreen, AppSwitcher and Theme under `shell/qml/`, plus this file and `docs/screens/`.
+- Start: insets 28/56 passed from Main, arrow moved into the Flickable footer, tile model reordered (4 small, 2 medium, wide, medium+small clusters), width/height Behaviors gated on enterP>=1, glyph size snapped to nominal tile size (no per-frame Canvas repaint), resize cycle small, medium, wide, large, small, hold-then-drag handoff in edit mode, home on Start scrolls to top, pin passes the glyph and only returns to Start on success with an animated scroll.
+- MetroTile and glyphs: label 14px with 8/6 margins, perspective flip via Matrix4x4 capped to the cell with a layer while flipping (mid-flip screenshot stays in the gutter), glyph stroke 3.6, filled mail/store/calendar/people/star accents, turnstile pivot at the screen left edge, playExit on any launch.
+- Lock, shade, input: lock release below threshold resets lockP to 0 (also on fling unlock), shadeCloseDrag id fixed in the Behavior condition, reduceMotion honoured on lock/shade/switch Behaviors, Shade progress clamped, back/home/search close alpha jump plus menu handling, swipe pager disabled while overlays are open and uses velocity, lock-state gestures ignored.
+- Other screens: search fed from AllApps.entries with the query cleared, focus forced and a toggle; AllApps title, headers and names restyled (Theme.font, 22px, 44px header square with 1px border, glyph-less first-letter Normal weight, rebuild on rows signals with callLater); Action Centre flat #1b1b1b, 36px top, no accent stripe, chevron on collapse/expand; NavBar 32px canvas, r13, filled star; StatusBar clock 14, battery percent hidden, rightMargin 12; Lock clock 120 ExtraLight and hint 12px at 0.5; AppSwitcher 2 columns with 6px gutters; HomeScreen scale animation skipped under Theme.tiles; stray StartScreen.qml-E deleted.
+- New public API: StartScreen.pinApp(name, glyph) returns bool; StartScreen.scrollTop()/scrollTo(y); AllApps.pinRequested(name, glyph); AllApps.closeOverlays(); AllApps.menuShown (readonly bool); Theme.glyphStroke is now a real 3.6; MetroTile.flipM, nomW, nomH. No new QML types.
+
+**Verified.** VM build is clean and /tmp/shell.log shows no QML warnings. The t-*.png screenshots were retaken, and the start, flip, apps and centre screens were viewed and confirmed.
+
+**Not verified.** Lock, switcher, search, app and edit screenshots were retaken but not visually read. Real touch paths (lock bounce, shade close drag, hold-then-drag, tilt) are code-reviewed only. The light scheme and reduceMotion were not screenshotted.
+
+**Not done.** Wallpaper vector scene (lock, optional); staggered clear-all slide-out; Loader lazy back face and flipper restart tweak (optional); dragMa still uses preventStealing so Start cannot be scrolled by dragging tiles in edit mode; the edit-mode resize button glyph is not state-specific; no debug touch-injection command; the turnstile is still orthographic (pivot fixed, no perspective); the Start grid can still end in a partial row at max scroll (a footer row was added).
+
+**Next agent should.** Read the lock, switcher, search, app and edit screenshots and fix anything visible; screenshot the light scheme and reduceMotion; add a debug touch-injection command so real touch paths can be exercised; resolve the edit-mode drag-scroll limitation; then take on the optional items above (wallpaper scene, staggered clear-all, lazy back face, perspective turnstile). Push the commit only when the owner asks.
 
 ### How to test TilesDE (build, run, see it in a graphical session, drive it, screenshot it)
 
