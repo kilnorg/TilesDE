@@ -121,7 +121,7 @@ QtObject {
     readonly property int gap: tileGap
     readonly property int pageMargin: 12
     readonly property int tileCols: 4
-    readonly property int glyphStroke: 3
+    readonly property real glyphStroke: 3.6
     // edge of one small tile for a screen of given width: 4 columns, 3 inner gaps, margin on both sides
     function tileUnit(w) { return Math.floor((w - 2 * pageMargin - (tileCols - 1) * tileGap) / tileCols) }
     // pixel size (w, h) of a tile size name on a screen of width w

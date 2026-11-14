@@ -50,14 +50,33 @@ Item {
     Behavior on tiltY { enabled: !Theme.reduceMotion; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.01 } }
     Behavior on pressScale { enabled: !Theme.reduceMotion; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.001 } }
 
+    // flip with perspective: rotation about the tile's horizontal centre axis, projected, then scaled so
+    // the near edge never grows past the cell (flip stays inside its gutter)
+    readonly property real _persp: 900
+    readonly property var flipM: {
+        const a = flipAngle * Math.PI / 180, c = Math.cos(a), s = Math.sin(a)
+        const cx = width / 2, cy = height / 2, d = _persp
+        const k = 1 - (height / 2) * Math.abs(s) / d
+        return Qt.matrix4x4(
+            k, -cx * s / d, 0, cx - k * cx + cx * s * cy / d,
+            0, k * c - cy * s / d, 0, cy - k * c * cy + cy * cy * s / d,
+            0, s, 1, -s * cy,
+            0, -s / d, 0, 1 + s * cy / d)
+    }
+    // glyph size from the nominal tile size, so it does not repaint while the cell animates
+    readonly property real nomW: Theme.tileW(size, screenW)
+    readonly property real nomH: Theme.tileH(size, screenW)
+
     Item {
         id: body
         anchors.fill: parent
         scale: root.pressScale
+        layer.enabled: root.flipAngle % 360 !== 0
+        layer.smooth: true
         transform: [
             Rotation { origin.x: body.width / 2; origin.y: body.height / 2; axis { x: 1; y: 0; z: 0 } angle: root.tiltX },
             Rotation { origin.x: body.width / 2; origin.y: body.height / 2; axis { x: 0; y: 1; z: 0 } angle: root.tiltY },
-            Rotation { origin.x: body.width / 2; origin.y: body.height / 2; axis { x: 1; y: 0; z: 0 } angle: root.flipAngle }
+            Matrix4x4 { matrix: root.flipM }
         ]
 
         // front face
@@ -68,16 +87,17 @@ Item {
             Rectangle { anchors.fill: parent; color: root.fill; radius: Theme.tileRadius }
             TileGlyph {
                 anchors.centerIn: parent
-                anchors.verticalCenterOffset: root.size === "small" ? 0 : -Math.round(root.height * 0.04)
-                size: root.size === "small" ? Math.round(root.width * 0.52) : Math.round(Math.min(root.width, root.height) * (root.size === "large" ? 0.36 : 0.42))
+                anchors.verticalCenterOffset: root.size === "small" ? 0 : -Math.round(root.nomH * 0.04)
+                size: root.size === "small" ? Math.round(root.nomW * 0.5) : Math.round(Math.min(root.nomW, root.nomH) * (root.size === "large" ? 0.36 : 0.42))
+                stroke: root.size === "small" ? 3 : 3.8
                 name: root.glyph
                 color: Theme.tileText
             }
             Text {
                 visible: root.size !== "small" && root.label !== ""
-                anchors { left: parent.left; bottom: parent.bottom; leftMargin: 10; bottomMargin: 8; right: parent.right; rightMargin: 10 }
+                anchors { left: parent.left; bottom: parent.bottom; leftMargin: 8; bottomMargin: 6; right: parent.right; rightMargin: 8 }
                 text: root.label; elide: Text.ElideRight
-                color: Theme.tileText; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Normal
+                color: Theme.tileText; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.Normal
             }
         }
         // back face: pre-rotated half a turn so it reads upright once the body has flipped
@@ -110,6 +130,7 @@ Item {
     MouseArea {
         id: ma
         anchors.fill: parent
+        preventStealing: root.flat
         onPressed: (m) => root.touch = Qt.point(m.x, m.y)
         onPositionChanged: (m) => root.touch = Qt.point(m.x, m.y)
         onClicked: root.clicked(root.sceneRect())

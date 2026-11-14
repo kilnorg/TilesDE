@@ -2,7 +2,7 @@ import QtQuick
 import FlowShell
 
 // Alphabetical app list: letter header squares, accent icon squares, long-press context menu, alphabet jump.
-// Public: signal launched(string name, rect r), signal pinRequested(string name), property string filter
+// Public: signal launched(string name, rect r), signal pinRequested(string name, string glyph), property string filter
 // (case-insensitive substring), function scrollToLetter(l), function reset().
 Item {
     id: root
@@ -12,6 +12,8 @@ Item {
 
     readonly property int rowH: 72
     readonly property real iconS: 52
+    readonly property real headS: 44
+    readonly property bool menuShown: menu.shown
 
     // built-in phone apps: [name, glyph]
     readonly property var builtins: [
@@ -79,16 +81,21 @@ Item {
         available = av
         entries = out
     }
-    onFilterChanged: rebuild()
+    onFilterChanged: Qt.callLater(rebuild)
     Component.onCompleted: rebuild()
     Connections {
         target: (typeof Apps !== "undefined") ? Apps : null
         ignoreUnknownSignals: true
-        function onCountChanged() { root.rebuild() }
+        function onCountChanged() { Qt.callLater(root.rebuild) }
+        function onRowsInserted() { Qt.callLater(root.rebuild) }
+        function onRowsRemoved() { Qt.callLater(root.rebuild) }
+        function onModelReset() { Qt.callLater(root.rebuild) }
+        function onDataChanged() { Qt.callLater(root.rebuild) }
     }
 
     property int entranceTick: 0
     property alias alpha: jump
+    function closeOverlays() { jump.open = false; menu.shown = false }
     function reset() { list.contentY = list.originY; entranceTick++; jump.open = false; menu.shown = false }
 
     function scrollToLetter(l) {
@@ -108,15 +115,15 @@ Item {
 
     Text {
         id: title
-        x: Theme.pageMargin + 4; y: 64
+        x: Theme.pageMargin; y: 44
         text: "apps"
         color: Theme.tileText
-        font.family: "Inter"; font.weight: Font.Light; font.pixelSize: 44
+        font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 44
     }
 
     ListView {
         id: list
-        anchors { left: parent.left; right: parent.right; top: title.bottom; bottom: parent.bottom; topMargin: 12; bottomMargin: 96 }
+        anchors { left: parent.left; right: parent.right; top: title.bottom; bottom: parent.bottom; topMargin: 12; bottomMargin: 56 }
         clip: true
         model: root.entries
         boundsBehavior: Flickable.StopAtBounds
@@ -153,15 +160,15 @@ Item {
             // header square
             Rectangle {
                 visible: row.isHeader
-                x: Theme.pageMargin; anchors.verticalCenter: parent.verticalCenter
-                width: root.iconS; height: root.iconS
+                x: Theme.pageMargin + (root.iconS - root.headS) / 2; anchors.verticalCenter: parent.verticalCenter
+                width: root.headS; height: root.headS
                 color: hma.pressed ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent"
-                border.width: 2; border.color: Theme.accent
+                border.width: 1; border.color: Theme.accent
                 Text {
                     anchors.centerIn: parent
                     text: row.modelData.letter
                     color: Theme.accent
-                    font.family: "Inter"; font.weight: Font.Light; font.pixelSize: 32
+                    font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 28
                 }
                 MouseArea { id: hma; anchors.fill: parent; onClicked: jump.open = true }
             }
@@ -189,7 +196,7 @@ Item {
                         visible: row.modelData.glyph === ""
                         text: row.modelData.name.charAt(0).toUpperCase()
                         color: "white"
-                        font.family: "Inter"; font.weight: Font.Light; font.pixelSize: 28
+                        font.family: Theme.font; font.weight: Font.Normal; font.pixelSize: 26
                     }
                 }
                 Text {
@@ -197,7 +204,7 @@ Item {
                     text: row.modelData.name
                     elide: Text.ElideRight
                     color: Theme.tileText
-                    font.family: "Inter"; font.weight: Font.Light; font.pixelSize: 26
+                    font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 22
                 }
                 MouseArea {
                     id: ama
@@ -210,6 +217,7 @@ Item {
                     onPressAndHold: {
                         const p = ico.mapToItem(root, 0, 0)
                         menu.appName = row.modelData.name
+                        menu.appGlyph = row.modelData.glyph
                         menu.px = Math.min(Math.max(p.x + ico.width + 8, 12), root.width - menu.w - 12)
                         menu.py = Math.min(Math.max(p.y, 40), root.height - menu.h - 120)
                         menu.shown = true
@@ -225,6 +233,7 @@ Item {
         anchors.fill: parent
         property bool shown: false
         property string appName: ""
+        property string appGlyph: ""
         property real px: 0
         property real py: 0
         readonly property real w: 240
@@ -241,11 +250,11 @@ Item {
             Text {
                 anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
                 text: "pin to start"; color: "white"
-                font.family: "Inter"; font.weight: Font.Light; font.pixelSize: 24
+                font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 24
             }
             MouseArea {
                 anchors.fill: parent
-                onClicked: { root.pinRequested(menu.appName); menu.shown = false }
+                onClicked: { root.pinRequested(menu.appName, menu.appGlyph); menu.shown = false }
             }
         }
     }

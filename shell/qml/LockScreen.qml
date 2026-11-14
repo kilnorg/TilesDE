@@ -10,7 +10,7 @@ Item {
     property int messageCount: 2
     property int calendarCount: 1
     property real bounce: 0            // hint lift in px, animated while idle
-    Timer { interval: 5000; running: true; repeat: true; onTriggered: root.now = new Date() }
+    Timer { interval: 5000; running: root.visible; repeat: true; onTriggered: root.now = new Date() }
     opacity: 1 - progress * 0.9
     y: -progress * height * 0.55 - bounce
     visible: progress < 0.999
@@ -33,7 +33,7 @@ Item {
         anchors { left: parent.left; leftMargin: 28; bottom: badges.top; bottomMargin: 36 }
         spacing: -6
         Text { text: Qt.formatTime(root.now, "hh:mm"); color: "#ffffff"
-            font.pixelSize: 96; font.weight: Font.Thin; font.family: Theme.font }
+            font.pixelSize: 120; font.weight: Font.ExtraLight; font.family: Theme.font }
         Text { text: Qt.formatDate(root.now, "dddd, d MMMM").toLowerCase(); color: "#ffffff"
             font.pixelSize: 24; font.weight: Font.Light; font.family: Theme.font }
     }
@@ -55,5 +55,5 @@ Item {
     }
 
     Text { id: hint; anchors { bottom: parent.bottom; bottomMargin: 20; horizontalCenter: parent.horizontalCenter }
-        text: "swipe up to unlock"; color: "#ffffff"; opacity: 0.7; font.pixelSize: 13; font.weight: Font.Light; font.family: Theme.font }
+        text: "swipe up to unlock"; color: "#ffffff"; opacity: 0.5; font.pixelSize: 12; font.weight: Font.Light; font.family: Theme.font }
 }

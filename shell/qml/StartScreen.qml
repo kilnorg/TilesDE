@@ -12,8 +12,8 @@ Item {
     signal appsRequested()
     property bool editing: false
     property real pagerP: 0                    // 0 = start page, 1 = all apps (drives the tile fly-out)
-    property int topInset: 48                  // status bar
-    property int bottomInset: 96               // nav bar
+    property int topInset: 28                  // status bar
+    property int bottomInset: 56               // nav bar
     property bool flipsOn: true                // host can pause live flips
     readonly property bool exiting: _exiting
     property alias model: tileModel
@@ -26,17 +26,25 @@ Item {
     function playEnter() { _exiting = false; enterRequested() }
     function playExit() { _exiting = true; exitRequested() }
     function unpin(i) { if (i >= 0 && i < tileModel.count) tileModel.remove(i) }
-    function pinApp(name) {
+    // returns false when the app is already pinned
+    function pinApp(name, glyph) {
         for (let i = 0; i < tileModel.count; i++) if (tileModel.get(i).name === name) return false
-        const g = name.toLowerCase()
-        tileModel.append(mk(name, glyphs.indexOf(g) >= 0 ? g : "grid", "medium", false, "", "", "", 0))
-        flick.contentY = Math.max(flick.contentY, flick.contentHeight - flick.height + flick.bottomMargin)
+        const g = glyph && glyph !== "" ? glyph : (glyphs.indexOf(name.toLowerCase()) >= 0 ? name.toLowerCase() : "grid")
+        tileModel.append(mk(name, g, "medium", false, "", "", "", 0))
+        Qt.callLater(function() { root.scrollTo(Math.max(-flick.topMargin, flick.contentHeight - flick.height + flick.bottomMargin)) })
         return true
     }
+    function scrollTo(y) {
+        scrollAnim.stop()
+        if (Theme.reduceMotion) { flick.contentY = y; return }
+        scrollAnim.to = y
+        scrollAnim.start()
+    }
+    function scrollTop() { scrollTo(-flick.topMargin) }
     function resize(i) {
         if (i < 0 || i >= tileModel.count) return
         const s = tileModel.get(i).size
-        tileModel.setProperty(i, "size", s === "small" ? "medium" : (s === "medium" ? "wide" : "small"))
+        tileModel.setProperty(i, "size", s === "small" ? "medium" : (s === "medium" ? "wide" : (s === "wide" ? "large" : "small")))
     }
 
     // ---- internals ----
@@ -62,27 +70,27 @@ Item {
     ListModel { id: tileModel }
 
     Component.onCompleted: {
+        const d = new Date()
         const t = [
-            mk("Weather", "weather", "wide", true, "22°", "Sunny", "H 24°  L 16°"),
-            mk("Photos", "photos", "medium", true, "", "Yesterday", "42 new photos"),
-            mk("Mail", "mail", "medium", true, "3", "Design review", "Inbox, 3 unread"),
-            mk("Calendar", "calendar", "wide", true, Qt.formatDate(new Date(), "d"), Qt.formatDate(new Date(), "dddd"), "Design review, 10:30"),
-            mk("Store", "store", "medium", true, "", "Updates", "5 apps ready"),
-            mk("People", "people", "medium", true, "", "Sam", "Sent you a photo"),
             mk("Phone", "phone", "small", false, "", "", "", 2),
+            mk("Messages", "message", "small", false, "", "", "", 4),
             mk("Camera", "camera", "small", false, "", "", "", 0),
-            mk("Settings", "settings", "small", false, "", "", "", 0),
             mk("Music", "music", "small", false, "", "", "", 0),
+            mk("Calendar", "calendar", "medium", true, Qt.formatDate(d, "d"), Qt.formatDate(d, "dddd"), "Design review, 10:30"),
+            mk("Mail", "mail", "medium", true, "3", "Design review", "Inbox, 3 unread"),
+            mk("Weather", "weather", "wide", true, "22\u00b0", "Sunny", "H 24\u00b0  L 16\u00b0"),
+            mk("Photos", "photos", "medium", true, "", "Yesterday", "42 new photos"),
+            mk("Settings", "settings", "small", false, "", "", "", 0),
             mk("Maps", "maps", "small", false, "", "", "", 0),
             mk("Notes", "notes", "small", false, "", "", "", 0),
             mk("Clock", "clock", "small", false, "", "", "", 0),
+            mk("People", "people", "medium", true, "", "Sam", "Sent you a photo"),
             mk("Files", "files", "small", false, "", "", "", 0),
-            mk("Messages", "message", "medium", true, "4", "Alex", "Are you coming tonight?", 4),
             mk("Browser", "browser", "small", false, "", "", "", 0),
             mk("Wallet", "wallet", "small", false, "", "", "", 0),
             mk("Terminal", "terminal", "small", false, "", "", "", 0),
-            mk("Noxal", "noxal", "small", false, "", "", "", 0),
-            mk("Photos", "photos", "large", true, "", "Photos hub", "Memories from last summer")
+            mk("Store", "store", "medium", true, "", "Updates", "5 apps ready"),
+            mk("Noxal", "noxal", "small", false, "", "", "", 0)
         ]
         for (let i = 0; i < t.length; i++) tileModel.append(t[i])
         computeLayout()
@@ -174,8 +182,8 @@ Item {
     Flickable {
         id: flick
         anchors.fill: parent
-        topMargin: root.topInset + 6
-        bottomMargin: root.bottomInset + 70
+        topMargin: root.topInset + 2
+        bottomMargin: root.bottomInset
         contentWidth: width
         contentHeight: content.height
         interactive: root.dragIndex < 0
@@ -183,11 +191,12 @@ Item {
         flickableDirection: Flickable.VerticalFlick
         Component.onCompleted: contentY = -topMargin
         onMovingChanged: Theme.scrollTick++
+        NumberAnimation { id: scrollAnim; target: flick; property: "contentY"; duration: 320; easing.type: Easing.InOutCubic }
 
         Item {
             id: content
             width: flick.width
-            height: root.rowsHeight + 8
+            height: root.rowsHeight + 8 + 64
 
             // background tap leaves edit mode
             MouseArea {
@@ -215,6 +224,35 @@ Item {
                     property real dragX: 0
                     property real dragY: 0
                     property real enterP: 0
+                    property bool held: false
+                    property bool dMoved: false
+                    property point dPress: Qt.point(0, 0)
+                    function dragStep(mx, my, src) {
+                        const vp = src.mapToItem(flick.parent, mx, my)
+                        if (!dMoved) {
+                            if (Math.abs(mx - dPress.x) + Math.abs(my - dPress.y) < 12) return
+                            dMoved = true
+                            const p0 = src.mapToItem(content, dPress.x, dPress.y)
+                            root.dragGrab = Qt.point(p0.x - (cell.x + cell.width / 2), p0.y - (cell.y + cell.height / 2))
+                            cell.dragX = cell.x; cell.dragY = cell.y
+                            cell.dragging = true
+                            root.dragCell = cell
+                            root.dragIndex = cell.index
+                        }
+                        root.dragVp = Qt.point(vp.x, vp.y)
+                        root.dragIndex = cell.index
+                        root.updateDrag()
+                    }
+                    function dragFinish() {
+                        if (dMoved) { cell.dragging = false; root.dragIndex = -1; root.dragCell = null }
+                        dMoved = false
+                    }
+                    Connections {
+                        target: tile.mouse
+                        function onPositionChanged(m) { if (cell.held && root.editing && tile.mouse.pressed) cell.dragStep(m.x, m.y, tile.mouse) }
+                        function onReleased() { if (cell.held) { cell.held = false; cell.dragFinish() } }
+                        function onCanceled() { if (cell.held) { cell.held = false; cell.dragFinish() } }
+                    }
                     readonly property real stag: lay ? Math.min(0.5, lay.row * 0.08 + lay.col * 0.04) : 0
                     readonly property real pagerAng: Math.max(0, Math.min(1, root.pagerP * 1.5 - stag)) * 90
                     readonly property real turn: -((1 - enterP) * 90 + pagerAng)
@@ -229,11 +267,11 @@ Item {
                     scale: root.editing ? (dragging ? 1.04 : 0.88) : 1
                     Behavior on x { enabled: !cell.dragging && !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                     Behavior on y { enabled: !cell.dragging && !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-                    Behavior on width { enabled: !Theme.reduceMotion; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                    Behavior on height { enabled: !Theme.reduceMotion; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                    Behavior on width { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                    Behavior on height { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                     transform: Rotation {
-                        origin.x: 0; origin.y: cell.height / 2
+                        origin.x: -cell.x; origin.y: cell.height / 2
                         axis { x: 0; y: 1; z: 0 }
                         angle: cell.turn
                     }
@@ -282,7 +320,13 @@ Item {
                             root.launched(cell.name, r, false)
                             root.playExit()
                         }
-                        onPressAndHold: root.enterEdit()
+                        onPressAndHold: {
+                            // hand the held press to the drag logic so hold-then-drag is one gesture
+                            cell.held = true
+                            cell.dMoved = false
+                            cell.dPress = Qt.point(tile.mouse.mouseX, tile.mouse.mouseY)
+                            root.enterEdit()
+                        }
 
                         // live back face
                         Loader {
@@ -310,35 +354,10 @@ Item {
                         visible: root.editing
                         z: 5
                         preventStealing: true
-                        property bool moved: false
-                        property point pressPt
-                        onPressed: (m) => {
-                            moved = false
-                            pressPt = Qt.point(m.x, m.y)
-                        }
-                        onPositionChanged: (m) => {
-                            if (!pressed) return
-                            const vp = dragMa.mapToItem(flick.parent, m.x, m.y)
-                            if (!moved) {
-                                if (Math.abs(m.x - pressPt.x) + Math.abs(m.y - pressPt.y) < 12) return
-                                moved = true
-                                const p0 = dragMa.mapToItem(content, pressPt.x, pressPt.y)
-                                root.dragGrab = Qt.point(p0.x - (cell.x + cell.width / 2), p0.y - (cell.y + cell.height / 2))
-                                cell.dragX = cell.x; cell.dragY = cell.y
-                                cell.dragging = true
-                                root.dragCell = cell
-                                root.dragIndex = cell.index
-                            }
-                            root.dragVp = Qt.point(vp.x, vp.y)
-                            root.dragIndex = cell.index
-                            root.updateDrag()
-                        }
-                        function finish() {
-                            if (moved) { cell.dragging = false; root.dragIndex = -1; root.dragCell = null }
-                            moved = false
-                        }
-                        onReleased: finish()
-                        onCanceled: finish()
+                        onPressed: (m) => { cell.dMoved = false; cell.dPress = Qt.point(m.x, m.y) }
+                        onPositionChanged: (m) => { if (pressed) cell.dragStep(m.x, m.y, dragMa) }
+                        onReleased: cell.dragFinish()
+                        onCanceled: cell.dragFinish()
                     }
 
                     // edit mode: unpin
@@ -401,32 +420,32 @@ Item {
                     }
                 }
             }
-        }
-    }
 
-    // "all apps" arrow, bottom right
-    Item {
-        id: arrowBtn
-        width: 48; height: 48
-        anchors { right: parent.right; rightMargin: 16; bottom: parent.bottom; bottomMargin: root.bottomInset + 12 }
-        opacity: root.editing ? 0 : Math.max(0, 1 - root.pagerP * 2)
-        visible: opacity > 0.01
-        Behavior on opacity { enabled: !Theme.reduceMotion; NumberAnimation { duration: 150 } }
-        scale: arrowMa.pressed ? 0.92 : 1
-        Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.pressMs } }
-        Rectangle { anchors.fill: parent; radius: 24; color: "transparent"; border.width: 2; border.color: Theme.tileText }
-        Canvas {
-            anchors.fill: parent
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-                ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"
-                ctx.beginPath()
-                ctx.moveTo(width * 0.30, height * 0.5); ctx.lineTo(width * 0.70, height * 0.5)
-                ctx.moveTo(width * 0.52, height * 0.30); ctx.lineTo(width * 0.72, height * 0.5); ctx.lineTo(width * 0.52, height * 0.70)
-                ctx.stroke()
+            // "all apps" arrow: footer row below the last tile
+            Item {
+                id: arrowBtn
+                width: 48; height: 48
+                x: content.width - width - Theme.pageMargin; y: root.rowsHeight + 8 + 8
+                opacity: root.editing ? 0 : Math.max(0, 1 - root.pagerP * 2)
+                visible: opacity > 0.01
+                Behavior on opacity { enabled: !Theme.reduceMotion; NumberAnimation { duration: 150 } }
+                scale: arrowMa.pressed ? 0.92 : 1
+                Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.pressMs } }
+                Rectangle { anchors.fill: parent; radius: 24; color: "transparent"; border.width: 2; border.color: Theme.tileText }
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(width * 0.30, height * 0.5); ctx.lineTo(width * 0.70, height * 0.5)
+                        ctx.moveTo(width * 0.52, height * 0.30); ctx.lineTo(width * 0.72, height * 0.5); ctx.lineTo(width * 0.52, height * 0.70)
+                        ctx.stroke()
+                    }
+                }
+                MouseArea { id: arrowMa; anchors.fill: parent; anchors.margins: -8; onClicked: root.appsRequested() }
             }
         }
-        MouseArea { id: arrowMa; anchors.fill: parent; anchors.margins: -8; onClicked: root.appsRequested() }
     }
 }

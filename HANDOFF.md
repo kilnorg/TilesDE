@@ -59,6 +59,14 @@ Restore FlowDE from the backup: `git clone flowde-all-branches.bundle restored` 
 
 **Next agent should.** Add the three new files to `QML_FILES` and put the gallery hook into Main.qml properly; build the Start screen on MetroTile; replace the old components (Toggle, SliderRow) with Tiles-styled ones; screenshot the light scheme; exercise click, press-and-hold and real touch; re-check the old themes; commit locally.
 
+### Review fixes (done)
+
+**Goal.** Fix review findings so TilesDE matches the reference: tight insets, tile mix, correct gestures, no per-frame glyph repaints.
+
+**Done.** Insets 28/56, all-apps arrow is a footer row, reordered tiles (4 small, 2 medium, wide, clusters), lock drag springs back, shade close drag no longer spring-chases, Behaviors respect `Theme.reduceMotion`, back/home close alpha jump and context menu, search fed from AllApps, hold-then-drag in edit mode, resize cycle reaches large, pin passes glyph and animates scroll, flip uses perspective matrix inside the cell, glyph size snapped (no repaint while animating), filled glyph accents, Action Centre and nav/status/lock tweaks, stray `StartScreen.qml-E` removed. VM build clean, no QML warnings; screenshots in `docs/screens/t-*.png` retaken.
+
+**Not verified.** Real touch (lock bounce, shade close, hold-drag), light scheme, reduce-motion paths.
+
 #### Earlier entries
 
 Goal: faithful Windows-Phone-10-Mobile look on the Qt/QML shell (black, solid accent live tiles, turnstile, alphabetical app list, nav bar, lock, action centre). Default accent terracotta `#D97757`.
@@ -119,6 +127,30 @@ Target design (not yet implemented, nothing in `tilesde` has been changed from F
 3. Run `shell/sync-build.sh`, fix build errors, and screenshot Start, All Apps, Lock, Action Centre and the switcher.
 4. Exercise edit mode, drag-reorder, long-press, and real touch, then check the Shade swipe-away against Main's DragHandler.
 5. Persist tile layout, then commit locally.
+
+### M3 Integrate: runs in VM with screenshots
+
+**Goal of this milestone.** Integrate the new Tiles QML types into the shell so TilesDE builds and runs cleanly in the VM, and capture screenshots of every main screen. The Start screen should closely match the Windows-Phone-style reference.
+
+**What was done.** The shell now runs without QML warnings in the VM and is committed locally as `b392a99` (not pushed). The new QML types MetroTile, TileGlyph, TileGallery, StartScreen, AllApps, AlphaJump and NavBar are registered in `shell/CMakeLists.txt`. In `shell/qml/Main.qml`, NavBar replaces GestureBar, the wallpaper shows only on the lock screen, and the window title is TilesDE. The Services mock notification text now says TilesDE. In `shell/src/main.cpp` the `StartScreen` context property clashed with the new StartScreen QML type, so it was renamed `StartPage`. Two bugs from earlier agents were fixed: an uppercase property name `L` in `StartScreen.qml` (now `lay`) and an undefined `badge` role. A capture script was added at `shell/tools/tiles-shots.sh`.
+- Screens rendered: start, edit, all apps, alpha jump, lock, Action Centre, switcher, app page. Screenshots are in `docs/screens/t-start.png`, `t-edit.png`, `t-apps.png`, `t-alpha.png`, `t-lock.png`, `t-centre.png`, `t-switcher.png`, `t-app.png`.
+- Start matches the reference in layout: black background, solid terracotta tiles, white glyphs, labels bottom-left, 6px gaps, bottom nav bar with the circled-star home button. Edit mode shows unpin and resize buttons per tile. Lock has the terracotta gradient wallpaper, a thin 96px clock, a lowercase date and badge counts. Action Centre has accent quick toggles, a brightness slider and a notification list. The switcher shows cards with a close button and a close-all button. The app page has an accent title bar with a turnstile entrance.
+- Public API: control socket `{"set":"screen","value":"<screen>"}` with screen one of lock, home, apps, edit, centre (alias shade), alpha, search, switcher; `{"set":"open","value":"<App>"}` opens an app page. Main.qml functions: `screenCmd(v)`, `applyStart()`, `gesture(name)` (home, switcher, shade, qs, search, back). Env `FLOWDE_START` takes the same screen names. AllApps has a new alias `alpha` (AlphaJump). The binary and VM directory keep the old names `flowde-shell` and `flowde-shell-build`.
+
+**Verified.** Clean VM build, no QML warnings in the log, and each screen above checked visually through control-socket screenshots.
+
+**Not verified.** Real touch input was never used: drag-reorder, press-and-hold, the pager swipe, NavBar tap versus drag, the lock swipe bounce and Action Centre swipe-away are untested. The light scheme, `reduceMotion` and the other accents were not screenshotted, and the old themes were not re-checked. The turnstile is a Y-rotation without perspective, so it reads as a squash; only one mid-flip frame (Photos tile) was captured and the full animation was not judged.
+
+**Caveats.**
+1. The all-apps arrow button overlaps the bottom-right of the last visible tile row on Start.
+2. The search nav button opens the flat search overlay, not the All Apps list with a filter field, and that overlay uses a hard-coded name list.
+3. Tile order and size are not persisted. Live tiles, badges and lock counts are mock data.
+4. The wallpaper is a plain procedural gradient (Theme Tiles dark w0-w3), not a photo.
+5. Builds are slow when other agents hold the VM heavy lock, though each finished. The first sync-build call exceeded the 120s tool timeout and was backgrounded, so the VM ran several queued builds of the same directory; the final build is current.
+6. `docs/design-ref` was already git-ignored, so the reference image was not committed.
+7. The commit message has no trailers and the author is the repo-local git config.
+
+**Next agent should.** Test with real touch input (reorder, press-and-hold, pager swipe, NavBar, lock swipe, Action Centre swipe-away). Fix the all-apps arrow overlap. Screenshot the light scheme, `reduceMotion` and other accents, and re-check the old themes. Add perspective to the turnstile and review the full animation. Make search open All Apps with a filter field. Persist tile order and size. Then build the personalisation page and persisted theme file described in the design references section.
 
 ### How to test TilesDE (build, run, see it in a graphical session, drive it, screenshot it)
 

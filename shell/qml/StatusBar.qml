@@ -10,7 +10,7 @@ Item {
     Timer { interval: 10000; running: true; repeat: true; onTriggered: root.now = new Date() }
 
     Row {
-        anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+        anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
         spacing: 10
         // signal bars
         Row {
@@ -36,7 +36,7 @@ Item {
         // battery
         Row {
             spacing: 3; anchors.verticalCenter: parent.verticalCenter
-            Text { text: Services.battery + "%"; color: root.ink; font.pixelSize: 12; font.weight: Font.Light
+            Text { visible: false; text: Services.battery + "%"; color: root.ink; font.pixelSize: 12; font.weight: Font.Light
                 font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
             Item {
                 width: 22; height: 11; anchors.verticalCenter: parent.verticalCenter
@@ -46,7 +46,7 @@ Item {
                 Rectangle { x: 20; y: 3; width: 2; height: 5; color: root.ink }
             }
         }
-        Text { text: Qt.formatTime(root.now, "hh:mm"); color: root.ink; font.pixelSize: 13; font.weight: Font.Light
+        Text { text: Qt.formatTime(root.now, "hh:mm"); color: root.ink; font.pixelSize: 14; font.weight: Font.Light
             font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
     }
 }

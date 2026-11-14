@@ -7,8 +7,8 @@ Item {
     property real progress: 0
     property bool expanded: false
     visible: progress > 0.001
-    y: -(1 - progress) * height
-    readonly property color panel: Theme.dark ? "#101010" : "#ececec"
+    y: -(1 - Math.min(1, Math.max(0, progress))) * height
+    readonly property color panel: Theme.dark ? "#1b1b1b" : "#ececec"
     readonly property color cardColor: Theme.dark ? "#1f1f1f" : "#ffffff"
     onProgressChanged: if (progress < 0.01) expanded = false
 
@@ -17,7 +17,7 @@ Item {
 
     Column {
         id: top
-        anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: 56; leftMargin: Theme.pageMargin; rightMargin: Theme.pageMargin }
+        anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: 36; leftMargin: Theme.pageMargin; rightMargin: Theme.pageMargin }
         spacing: Theme.tileGap
         readonly property real tw: (width - 3 * Theme.tileGap) / 4
         Row {
@@ -44,6 +44,22 @@ Item {
         }
         Item {
             width: parent.width; height: 40
+            Canvas {
+                id: chev
+                width: 18; height: 10
+                anchors { right: expTxt.left; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                property color ink: Theme.text
+                property bool up: root.expanded
+                onInkChanged: requestPaint(); onUpChanged: requestPaint()
+                Component.onCompleted: requestPaint()
+                onPaint: {
+                    const c = getContext("2d"); c.clearRect(0, 0, width, height)
+                    c.strokeStyle = ink; c.lineWidth = 2; c.lineCap = "round"; c.lineJoin = "round"
+                    c.beginPath()
+                    if (up) { c.moveTo(2, 8); c.lineTo(9, 2); c.lineTo(16, 8) } else { c.moveTo(2, 2); c.lineTo(9, 8); c.lineTo(16, 2) }
+                    c.stroke()
+                }
+            }
             Text { id: expTxt; anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 text: root.expanded ? "collapse" : "expand"; color: Theme.text
                 font.pixelSize: 16; font.family: Theme.font; font.weight: Theme.fontLight
@@ -85,7 +101,6 @@ Item {
                 width: dl.width; height: txt.implicitHeight + 24
                 color: root.cardColor
                 opacity: 1 - Math.min(1, Math.abs(x) / (dl.width * 0.8))
-                Rectangle { width: 4; height: parent.height; color: Theme.accent }
                 Column {
                     id: txt
                     x: 16; y: 12; width: parent.width - 32; spacing: 2

@@ -32,9 +32,9 @@ Window {
     property real switchP: StartPage === "switcher" ? 1 : 0
     onPageChanged: { lockP = page === "lock" ? 0 : 1; switchP = page === "switcher" ? 1 : 0; appP = page === "app" ? 1 : 0 }
 
-    Behavior on lockP { enabled: !lockDrag.active; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002; mass: 1; modulus: 0 } }
-    Behavior on shadeP { enabled: !shadeDrag.active; SpringAnimation { spring: 3.4; damping: 0.3; epsilon: 0.002 } }
-    Behavior on switchP { SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002 } }
+    Behavior on lockP { enabled: !lockDrag.active && !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002; mass: 1; modulus: 0 } }
+    Behavior on shadeP { enabled: !shadeDrag.active && !shadeCloseDrag.active && !Theme.reduceMotion; SpringAnimation { spring: 3.4; damping: 0.3; epsilon: 0.002 } }
+    Behavior on switchP { enabled: !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002 } }
 
     Component.onCompleted: {
         Theme.select(StartTheme)
@@ -53,7 +53,7 @@ Window {
         else if (StartPage === "alpha") { home.showApps(); home.allApps.alpha.open = true }
     }
     function screenCmd(v) {
-        home.searchOpen = false; home.allApps.alpha.open = false
+        home.searchOpen = false; home.allApps.closeOverlays()
         if (v !== "edit" && home.start.editing) home.start.exitEdit()
         if (v === "shade" || v === "centre") { shadeP = 1; return }
         shadeP = 0
@@ -81,10 +81,17 @@ Window {
     }
 
     function gesture(name) {
-        if (name === "home") { shadeP = 0; home.searchOpen = false; if (page === "home") { home.showStart(); home.start.exitEdit() } page = "home"; home.showStart() }
+        if (page === "lock" && name !== "shade" && name !== "qs") return
+        if (name === "home") {
+            shadeP = 0; home.searchOpen = false; home.allApps.closeOverlays()
+            const wasStart = (page === "home" && home.pagerP < 0.5 && !home.start.editing)
+            if (page === "home") home.start.exitEdit()
+            page = "home"; home.showStart()
+            if (wasStart) home.start.scrollTop()
+        }
         else if (name === "switcher") { shadeP = 0; page = "switcher" }
         else if (name === "shade" || name === "qs") shadeP = 1
-        else if (name === "search") { shadeP = 0; page = "home"; home.searchOpen = true }
+        else if (name === "search") { shadeP = 0; page = "home"; home.searchOpen = !home.searchOpen }
         else if (name === "back") {
             if (shadeP > 0.5) shadeP = 0
             else if (page === "home") home.goBack()
@@ -113,8 +120,8 @@ Window {
             id: home
             anchors.fill: parent
             anchors.topMargin: 0
-            scale: (0.96 + 0.04 * win.lockP * (1 - win.switchP * 0.6)) * (1 - 0.06 * win.appP)
-            topInset: 40; bottomInset: 72
+            scale: Theme.tiles ? (1 - 0.06 * win.appP) : (0.96 + 0.04 * win.lockP * (1 - win.switchP * 0.6)) * (1 - 0.06 * win.appP)
+            topInset: 28; bottomInset: 56
             opacity: win.page === "switcher" ? 0.0 : win.lockP
             dim: 0.28 * win.appP
             onLaunched: (n, r, real) => win.openApp(n, r, real)
@@ -137,7 +144,10 @@ Window {
             enabled: win.page === "lock"
             target: null; xAxis.enabled: false
             onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / (win.height * 0.5)))
-            onActiveChanged: if (!active) win.page = (win.lockP > 0.35 ? "home" : "lock")
+            onActiveChanged: if (!active) {
+                if (win.lockP > 0.35 || centroid.velocity.y < -900) win.page = "home"
+                else { win.page = "lock"; win.lockP = 0 }
+            }
         }
 
         StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: "white" }
@@ -157,6 +167,7 @@ Window {
             progress: win.shadeP
             // swipe up on shade closes it
             DragHandler {
+                id: shadeCloseDrag
                 target: null; xAxis.enabled: false
                 onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, 1 + translation.y / (win.height * 0.4)))
                 onActiveChanged: if (!active) win.shadeP = win.shadeP > 0.7 ? 1 : 0

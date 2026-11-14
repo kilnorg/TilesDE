@@ -134,6 +134,27 @@ Canvas {
         }
     }
 
+    // filled accents drawn under the strokes (solid or tinted), 48x48 coordinates
+    function fills(c, n) {
+        c.fillStyle = root.color
+        if (n === "mail") {
+            c.globalAlpha = 0.3; c.beginPath(); rr(c, 5, 10, 38, 28, 2); c.fill()
+            c.globalAlpha = 1; c.beginPath(); c.moveTo(5, 12); c.lineTo(24, 28); c.lineTo(43, 12); c.lineTo(43, 10); c.lineTo(5, 10); c.closePath(); c.fill()
+        } else if (n === "store") {
+            c.globalAlpha = 0.3; c.beginPath(); rr(c, 8, 15, 32, 27, 2); c.fill()
+            c.globalAlpha = 1; c.beginPath(); c.rect(8, 15, 32, 5); c.fill()
+        } else if (n === "calendar") {
+            c.globalAlpha = 1; c.beginPath(); c.rect(6, 10, 36, 9); c.fill()
+            c.globalAlpha = 0.3; c.beginPath(); c.rect(6, 19, 36, 23); c.fill()
+        } else if (n === "people") {
+            c.globalAlpha = 1; c.beginPath(); ell(c, 24, 16, 7.5, 7.5); c.fill()
+            c.globalAlpha = 0.3; c.beginPath(); c.moveTo(9, 42); c.bezierCurveTo(9, 32, 16, 27, 24, 27); c.bezierCurveTo(32, 27, 39, 32, 39, 42); c.closePath(); c.fill()
+        } else if (n === "star") {
+            c.globalAlpha = 1; c.beginPath(); draw(c, "star"); c.fill()
+        }
+        c.globalAlpha = 1
+    }
+
     onPaint: {
         const c = getContext("2d")
         c.reset()
@@ -144,6 +165,7 @@ Canvas {
         c.strokeStyle = root.color
         c.lineWidth = root.stroke / s
         c.lineJoin = "round"; c.lineCap = "round"
+        fills(c, root.name)
         c.beginPath()
         draw(c, root.name)
         c.stroke()
