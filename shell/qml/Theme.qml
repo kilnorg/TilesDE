@@ -1,21 +1,22 @@
 pragma Singleton
 import QtQuick
 
-// Design tokens. Default: "AnthropicGlassIcons" (alias anthropic-glass-icons): flat Kiln cut-paper wallpaper,
+// Design tokens. Default: "Tiles" (Windows-Phone-style flat black/white with solid accent tiles, see docs/tiles-spec.md).
+// Previous default: "AnthropicGlassIcons" (alias anthropic-glass-icons): flat Kiln cut-paper wallpaper,
 // flat paper surfaces with hairline strokes, serif clock, Liquid-Glass ICONS only.
 // Others stay selectable: LiquidGlass (full-surface glass), Minimalist, MaterialYou, AnthropicDesign.
 // Runtime: Theme.select("minimalist"); Theme.dark = true.
 QtObject {
     id: t
-    property string name: "AnthropicGlassIcons"
-    property bool dark: false
+    property string name: "Tiles"
+    property bool dark: true
     property bool reduceTransparency: false
     property bool reduceMotion: false
     property string glass: "full"          // power ladder: full | blur | flat
     property var backdrop: null            // shared downsampled wallpaper source (set by Main)
     property var backdropItem: null
     property int scrollTick: 0              // bumped while pages scroll so lens origins re-evaluate
-    readonly property var names: ["AnthropicGlassIcons", "LiquidGlass", "Minimalist", "MaterialYou", "AnthropicDesign"]
+    readonly property var names: ["Tiles", "AnthropicGlassIcons", "LiquidGlass", "Minimalist", "MaterialYou", "AnthropicDesign"]
 
     function select(n) {
         const k = String(n).toLowerCase().replace(/[-_ ]/g, "")
@@ -25,6 +26,14 @@ QtObject {
     }
 
     readonly property var sets: ({
+        Tiles: {
+            surfGlass: false, iconGlass: false, radius: 0, tileRadius: 0, blur: 0, refraction: 0, bezel: 1, rim: 0, wall: null,
+            light: { text: "#000000", dim: "#5f5f5f", accent: "#D97757", tint: "#ffffff", tintA: 0.0, rim: "#000000", flat: "#ffffff", hair: "#000000",
+                     onWall: "#000000", w0: "#ffffff", w1: "#ffffff", w2: "#ffffff", w3: "#ffffff", icon: "#000000", card: "#f0f0f0",
+                     glassTint: "#ffffff", glyph: "dark" },
+            dark:  { text: "#ffffff", dim: "#9a9a9a", accent: "#D97757", tint: "#000000", tintA: 0.0, rim: "#ffffff", flat: "#0a0a0a", hair: "#ffffff",
+                     onWall: "#ffffff", w0: "#1c0e0a", w1: "#6e3a29", w2: "#d97757", w3: "#0a0503", icon: "#ffffff", card: "#1b1b1b",
+                     glassTint: "#1b1b1b", glyph: "light" } },
         AnthropicGlassIcons: {
             surfGlass: false, iconGlass: true, radius: 14, tileRadius: 17, blur: 0, refraction: 0, bezel: 1, rim: 0,
             wall: { light: "qrc:/FlowShell/assets/wallpapers/kiln-light.png", dark: "qrc:/FlowShell/assets/wallpapers/night-paper-dark.png" },
@@ -65,7 +74,6 @@ QtObject {
 
     readonly property color text: c.text
     readonly property color textDim: c.dim
-    readonly property color accent: c.accent
     readonly property color iconInk: c.icon
     readonly property color card: c.card
     readonly property color flatSurface: c.flat
@@ -96,4 +104,34 @@ QtObject {
     readonly property bool paper: name === "AnthropicGlassIcons" || name === "AnthropicDesign" || name === "Minimalist"
     readonly property string font: "Inter"
     readonly property string serif: (name === "AnthropicGlassIcons" || name === "AnthropicDesign") ? "Noto Serif" : "Inter"
+
+    // ---- Tiles theme (see docs/tiles-spec.md) ----
+    // Accent: other themes use their own; "Tiles" uses the user-selectable accent. Set at runtime: Theme.userAccent = "#0078d7" or Theme.setAccent(3).
+    readonly property var accents: ["#D97757", "#E5484D", "#E8508C", "#A855D6", "#6E56CF", "#3E63DD", "#0F8BD6", "#12A594", "#30A46C", "#7D9A2E", "#E5A100", "#7A7A7A"]
+    readonly property var accentNames: ["terracotta", "red", "pink", "purple", "indigo", "blue", "cyan", "teal", "green", "lime", "amber", "steel"]
+    property color userAccent: "#D97757"
+    function setAccent(i) { if (i >= 0 && i < accents.length) userAccent = accents[i] }
+    readonly property color accent: name === "Tiles" ? userAccent : c.accent
+    readonly property bool tiles: name === "Tiles"
+    readonly property color tileText: "#ffffff"          // glyph and label on solid accent, both schemes
+    readonly property color tileBack: Qt.darker(accent, 1.18)   // flip back face
+    readonly property color tileDisabled: dark ? "#2a2a2a" : "#cfcfcf"
+    readonly property color pageBg: dark ? "#000000" : "#ffffff"
+    readonly property int tileGap: 6
+    readonly property int gap: tileGap
+    readonly property int pageMargin: 12
+    readonly property int tileCols: 4
+    readonly property int glyphStroke: 3
+    // edge of one small tile for a screen of given width: 4 columns, 3 inner gaps, margin on both sides
+    function tileUnit(w) { return Math.floor((w - 2 * pageMargin - (tileCols - 1) * tileGap) / tileCols) }
+    // pixel size (w, h) of a tile size name on a screen of width w
+    function tileW(size, w) { const u = tileUnit(w); return size === "small" ? u : size === "medium" ? 2 * u + tileGap : 4 * u + 3 * tileGap }
+    function tileH(size, w) { const u = tileUnit(w); return size === "small" ? u : size === "wide" || size === "medium" ? 2 * u + tileGap : 4 * u + 3 * tileGap }
+    // motion
+    readonly property int flipMs: reduceMotion ? 0 : 450
+    readonly property int flipPeriodMs: 6000
+    readonly property int flipStaggerMs: 140
+    readonly property int pressMs: reduceMotion ? 0 : 140
+    readonly property int turnstileMs: reduceMotion ? 0 : 320
+    readonly property int fontLight: Font.Light
 }

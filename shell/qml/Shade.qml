@@ -1,59 +1,118 @@
 import QtQuick
 import FlowShell
 
-// Notification shade + quick settings. progress 0..1 slides it down from the top.
+// Action Centre: solid near-black panel sliding from the top. progress 0..1.
 Item {
     id: root
     property real progress: 0
+    property bool expanded: false
     visible: progress > 0.001
     y: -(1 - progress) * height
-    GlassPanel {
-        anchors.fill: parent; radius: 0; blurRadius: Theme.blurPx * 1.4; refraction: 0; tintStrength: 0.08
-        flatOpaque: true; outline: false
-        // bottom edge radius cap
-    }
+    readonly property color panel: Theme.dark ? "#101010" : "#ececec"
+    readonly property color cardColor: Theme.dark ? "#1f1f1f" : "#ffffff"
+    onProgressChanged: if (progress < 0.01) expanded = false
+
+    Rectangle { anchors.fill: parent; color: root.panel
+        MouseArea { anchors.fill: parent } }   // swallow taps
+
     Column {
-        anchors { fill: parent; topMargin: 56; leftMargin: 18; rightMargin: 18; bottomMargin: 44 }
-        spacing: 14
-        Grid {
-            width: parent.width; columns: 3; spacing: 12
-            readonly property real tw: (width - 24) / 3
-            Toggle { width: parent.tw; height: 78; label: "Wi-Fi"; glyph: "◠"; active: Services.wifi; onToggled: Services.wifi = !Services.wifi }
-            Toggle { width: parent.tw; height: 78; label: "Bluetooth"; glyph: "ᛒ"; active: Services.bluetooth; onToggled: Services.bluetooth = !Services.bluetooth }
-            Toggle { width: parent.tw; height: 78; label: "Airplane"; glyph: "✈"; active: Services.airplane; onToggled: Services.airplane = !Services.airplane }
-            Toggle { width: parent.tw; height: 78; label: "Rotation"; glyph: "↻"; active: Services.rotationLock; onToggled: Services.rotationLock = !Services.rotationLock }
-            Toggle { width: parent.tw; height: 78; label: "Do not disturb"; glyph: "☾"; active: Services.dnd; onToggled: Services.dnd = !Services.dnd }
-            Toggle { width: parent.tw; height: 78; label: Theme.dark ? "Dark" : "Light"; glyph: "◐"; active: Theme.dark; onToggled: Theme.dark = !Theme.dark }
+        id: top
+        anchors { top: parent.top; left: parent.left; right: parent.right; topMargin: 56; leftMargin: Theme.pageMargin; rightMargin: Theme.pageMargin }
+        spacing: Theme.tileGap
+        readonly property real tw: (width - 3 * Theme.tileGap) / 4
+        Row {
+            spacing: Theme.tileGap
+            Toggle { width: top.tw; height: top.tw; label: "Wi-Fi"; glyph: "wifi"; active: Services.wifi; onToggled: Services.wifi = !Services.wifi }
+            Toggle { width: top.tw; height: top.tw; label: "Bluetooth"; glyph: "bluetooth"; active: Services.bluetooth; onToggled: Services.bluetooth = !Services.bluetooth }
+            Toggle { width: top.tw; height: top.tw; label: "Rotation"; glyph: "rotate"; active: Services.rotationLock; onToggled: Services.rotationLock = !Services.rotationLock }
+            Toggle { width: top.tw; height: top.tw; label: "Quiet"; glyph: "moon"; active: Services.dnd; onToggled: Services.dnd = !Services.dnd }
         }
-        SliderRow { width: parent.width; height: 52; glyph: "☀"; value: Services.brightness; onMoved: (v) => Services.brightness = v }
-        SliderRow { width: parent.width; height: 52; glyph: "♪"; value: Services.volume; onMoved: (v) => Services.volume = v }
-        Item { width: parent.width; height: 26
-            Text { text: "Notifications"; color: Theme.text; font.pixelSize: 15; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter; font.family: Theme.font }
-            Text { anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: "Clear"; color: Theme.accent; font.pixelSize: 14; font.family: Theme.font
-                MouseArea { anchors.fill: parent; anchors.margins: -10; onClicked: Services.notifications.clear() } } }
-        ListView {
-            id: nl
-            width: parent.width; height: parent.height - 78 * 2 - 12 - 52 * 2 - 26 - 14 * 4 - 16
-            spacing: 10; clip: true; model: Services.notifications
-            delegate: GlassPanel {
-                required property int index
-                required property string app
-                required property string title
-                required property string body
-                required property string time
-                width: nl.width; height: 74; radius: 22
-                Row { anchors.fill: parent; anchors.margins: 12; spacing: 12
-                    AppIcon { size: 38; showLabel: false; label: app }
-                    Column { width: parent.width - 54; anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                        Row { width: parent.width
-                            Text { width: parent.width - 40; text: title; elide: Text.ElideRight; color: Theme.text; font.pixelSize: 15; font.weight: Font.DemiBold; font.family: Theme.font }
-                            Text { text: time; color: Theme.textDim; font.pixelSize: 12; font.family: Theme.font } }
-                        Text { width: parent.width; text: body; elide: Text.ElideRight; color: Theme.textDim; font.pixelSize: 13; font.family: Theme.font } }
+        Item {
+            width: parent.width
+            height: root.expanded ? top.tw : 0
+            clip: true
+            opacity: root.expanded ? 1 : 0
+            Behavior on height { enabled: !Theme.reduceMotion; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on opacity { enabled: !Theme.reduceMotion; NumberAnimation { duration: 200 } }
+            Row {
+                spacing: Theme.tileGap
+                Toggle { width: top.tw; height: top.tw; label: "Airplane"; glyph: "plane"; active: Services.airplane; onToggled: Services.airplane = !Services.airplane }
+                Toggle { width: top.tw; height: top.tw; label: Theme.dark ? "Dark" : "Light"; glyph: "sun"; active: Theme.dark; onToggled: Theme.dark = !Theme.dark }
+                Toggle { width: top.tw; height: top.tw; label: "Sound"; glyph: "sound"; active: Services.volume > 0.01; onToggled: Services.volume = (Services.volume > 0.01 ? 0 : 0.45) }
+                Toggle { width: top.tw; height: top.tw; label: "Motion"; glyph: "motion"; active: !Services.reduceMotion; onToggled: Services.reduceMotion = !Services.reduceMotion }
+            }
+        }
+        Item {
+            width: parent.width; height: 40
+            Text { id: expTxt; anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                text: root.expanded ? "collapse" : "expand"; color: Theme.text
+                font.pixelSize: 16; font.family: Theme.font; font.weight: Theme.fontLight
+                MouseArea { anchors.fill: parent; anchors.margins: -12; onClicked: root.expanded = !root.expanded } }
+        }
+        SliderRow { width: parent.width; height: 48; glyph: "sun"; value: Services.brightness; onMoved: (v) => Services.brightness = v }
+    }
+
+    Item {
+        id: nhead
+        anchors { top: top.bottom; topMargin: 14; left: parent.left; right: parent.right; leftMargin: Theme.pageMargin + 2; rightMargin: Theme.pageMargin + 2 }
+        height: 36
+        Text { anchors.verticalCenter: parent.verticalCenter; text: "notifications"; color: Theme.text
+            font.pixelSize: 22; font.family: Theme.font; font.weight: Theme.fontLight }
+        Text { anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: "clear all"; color: Theme.accent
+            font.pixelSize: 16; font.family: Theme.font; font.weight: Theme.fontLight
+            MouseArea { anchors.fill: parent; anchors.margins: -12; onClicked: Services.notifications.clear() } }
+    }
+
+    ListView {
+        id: nl
+        anchors { top: nhead.bottom; topMargin: 8; left: parent.left; right: parent.right; bottom: parent.bottom
+                  leftMargin: Theme.pageMargin; rightMargin: Theme.pageMargin; bottomMargin: 36 }
+        spacing: Theme.tileGap; clip: true; model: Services.notifications
+        boundsBehavior: Flickable.StopAtBounds
+        Text { visible: nl.count === 0; anchors { top: parent.top; topMargin: 20; left: parent.left; leftMargin: 4 }
+            text: "no new notifications"; color: Theme.textDim; font.pixelSize: 16; font.family: Theme.font; font.weight: Theme.fontLight }
+        delegate: Item {
+            id: dl
+            required property int index
+            required property string app
+            required property string title
+            required property string body
+            required property string time
+            width: nl.width
+            height: card.height
+            Rectangle {
+                id: card
+                width: dl.width; height: txt.implicitHeight + 24
+                color: root.cardColor
+                opacity: 1 - Math.min(1, Math.abs(x) / (dl.width * 0.8))
+                Rectangle { width: 4; height: parent.height; color: Theme.accent }
+                Column {
+                    id: txt
+                    x: 16; y: 12; width: parent.width - 32; spacing: 2
+                    Row { width: parent.width
+                        Text { width: parent.width - tm.implicitWidth; text: dl.app.toLowerCase(); elide: Text.ElideRight; color: Theme.accent
+                            font.pixelSize: 13; font.family: Theme.font }
+                        Text { id: tm; text: dl.time; color: Theme.textDim; font.pixelSize: 12; font.family: Theme.font } }
+                    Text { width: parent.width; text: dl.title; elide: Text.ElideRight; color: Theme.text
+                        font.pixelSize: 17; font.family: Theme.font; font.weight: Font.DemiBold }
+                    Text { width: parent.width; text: dl.body; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; color: Theme.textDim
+                        font.pixelSize: 14; font.family: Theme.font; font.weight: Theme.fontLight }
                 }
-                MouseArea { anchors.fill: parent; onClicked: Services.notifications.dismiss(index) }
+                DragHandler {
+                    id: dh
+                    target: card; yAxis.enabled: false
+                    onActiveChanged: if (!active) {
+                        if (Math.abs(card.x) > dl.width * 0.35) away.start(); else back.start()
+                    }
+                }
+                NumberAnimation { id: back; target: card; property: "x"; to: 0; duration: Theme.reduceMotion ? 0 : 160 }
+                SequentialAnimation { id: away
+                    NumberAnimation { target: card; property: "x"; to: card.x > 0 ? dl.width : -dl.width; duration: Theme.reduceMotion ? 0 : 160 }
+                    ScriptAction { script: Services.notifications.dismiss(dl.index) } }
             }
         }
     }
+
     Rectangle { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 14 }
-        width: 44; height: 5; radius: 3; color: Theme.text; opacity: 0.4 }
+        width: 44; height: 4; color: Theme.text; opacity: 0.4 }
 }

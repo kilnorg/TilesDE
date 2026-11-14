@@ -11,7 +11,7 @@ NotifModel::NotifModel(QObject *p) : QAbstractListModel(p) {
         {"Messages", "Mara", "Are we still on for tonight? I booked the table.", "now"},
         {"Calendar", "Design review in 15 min", "Room 4 / video link attached", "5m"},
         {"Noxal", "Summary ready", "3 unread threads condensed into 4 lines.", "12m"},
-        {"System", "Update available", "FlowDE 0.2 prototype build is ready to install.", "1h"},
+        {"System", "Update available", "TilesDE 0.2 prototype build is ready to install.", "1h"},
     };
 }
 QHash<int, QByteArray> NotifModel::roleNames() const {

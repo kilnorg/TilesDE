@@ -1,51 +1,52 @@
 import QtQuick
 import FlowShell
 
+// Thin status bar: no pills, light weight, signal bars + wifi + battery % + clock at right.
 Item {
     id: root
-    height: 40
-    property color ink: Theme.onWall
+    height: 28
+    property color ink: "#ffffff"
     property date now: new Date()
     Timer { interval: 10000; running: true; repeat: true; onTriggered: root.now = new Date() }
-    Text {
-        x: 28; anchors.verticalCenter: parent.verticalCenter
-        text: Qt.formatTime(root.now, "hh:mm"); color: root.ink
-        font.pixelSize: 15; font.weight: Font.DemiBold; font.family: Theme.font
-    }
+
     Row {
-        anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
-        spacing: 9
+        anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
+        spacing: 10
         // signal bars
         Row {
             spacing: 2; anchors.verticalCenter: parent.verticalCenter
             Repeater { model: 4
-                Rectangle { width: 3.5; height: 5 + index * 3; radius: 1; anchors.bottom: parent.bottom
-                    color: root.ink; opacity: (Services.airplane ? 0 : index < Services.signal) ? 1 : 0.28 } }
+                Rectangle { width: 3; height: 4 + index * 3; anchors.bottom: parent.bottom
+                    color: root.ink; opacity: (Services.airplane ? false : index < Services.signal) ? 1 : 0.3 } }
         }
         // wifi: three arcs
         Canvas {
-            width: 18; height: 14; anchors.verticalCenter: parent.verticalCenter
+            width: 16; height: 12; anchors.verticalCenter: parent.verticalCenter
             property color ink: root.ink
             property bool on: Services.wifi && !Services.airplane
             onInkChanged: requestPaint(); onOnChanged: requestPaint()
             onPaint: {
                 const c = getContext("2d"); c.clearRect(0, 0, width, height)
-                c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 2; c.lineCap = "round"
-                c.globalAlpha = on ? 1 : 0.28
-                for (let i = 1; i <= 3; i++) { c.beginPath(); c.arc(9, 13, i * 4, -Math.PI * 0.75, -Math.PI * 0.25); c.stroke() }
-                c.beginPath(); c.arc(9, 12.5, 1.4, 0, 6.3); c.fill()
+                c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 1.6; c.lineCap = "butt"
+                c.globalAlpha = on ? 1 : 0.3
+                for (let i = 1; i <= 3; i++) { c.beginPath(); c.arc(8, 11.5, i * 3.4, -Math.PI * 0.8, -Math.PI * 0.2); c.stroke() }
+                c.beginPath(); c.arc(8, 11, 1.2, 0, 6.3); c.fill()
             }
         }
         // battery
         Row {
-            spacing: 4; anchors.verticalCenter: parent.verticalCenter
-            Text { text: Services.battery; color: root.ink; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter; font.family: Theme.font }
-            Rectangle {
-                width: 26; height: 13; radius: 4; color: "transparent"; border.width: 1.4; border.color: root.ink
-                anchors.verticalCenter: parent.verticalCenter
-                Rectangle { x: 2; y: 2; height: parent.height - 4; width: (parent.width - 4) * Services.battery / 100; radius: 2
-                    color: Services.charging ? "#34c759" : (Services.battery < 20 ? "#ff453a" : root.ink) }
+            spacing: 3; anchors.verticalCenter: parent.verticalCenter
+            Text { text: Services.battery + "%"; color: root.ink; font.pixelSize: 12; font.weight: Font.Light
+                font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
+            Item {
+                width: 22; height: 11; anchors.verticalCenter: parent.verticalCenter
+                Rectangle { width: 20; height: 11; color: "transparent"; border.width: 1; border.color: root.ink
+                    Rectangle { x: 2; y: 2; height: parent.height - 4; width: (parent.width - 4) * Math.max(0, Math.min(100, Services.battery)) / 100
+                        color: Services.charging ? "#4cd964" : (Services.battery < 20 ? "#ff453a" : root.ink) } }
+                Rectangle { x: 20; y: 3; width: 2; height: 5; color: root.ink }
             }
         }
+        Text { text: Qt.formatTime(root.now, "hh:mm"); color: root.ink; font.pixelSize: 13; font.weight: Font.Light
+            font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
     }
 }

@@ -7,7 +7,7 @@ Window {
     visible: true
     width: 540; height: 1170
     color: "black"
-    title: "FlowDE Shell"
+    title: "TilesDE"
 
     // "lock" | "home" | "switcher" | "app"
     property var openApps: []
@@ -25,10 +25,11 @@ Window {
         if (launching) launchTimer.restart()
     }
     Timer { id: launchTimer; interval: 1600; onTriggered: if (win.appLaunching) win.gesture("home") }
-    property string page: StartScreen === "shade" || StartScreen === "search" ? "home" : StartScreen
-    property real lockP: StartScreen === "lock" ? 0 : 1
-    property real shadeP: StartScreen === "shade" ? 1 : 0
-    property real switchP: StartScreen === "switcher" ? 1 : 0
+    
+    property string page: ["shade","centre","search","apps","edit","alpha"].indexOf(StartPage) >= 0 ? "home" : StartPage
+    property real lockP: StartPage === "lock" ? 0 : 1
+    property real shadeP: StartPage === "shade" ? 1 : 0
+    property real switchP: StartPage === "switcher" ? 1 : 0
     onPageChanged: { lockP = page === "lock" ? 0 : 1; switchP = page === "switcher" ? 1 : 0; appP = page === "app" ? 1 : 0 }
 
     Behavior on lockP { enabled: !lockDrag.active; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002; mass: 1; modulus: 0 } }
@@ -43,7 +44,25 @@ Window {
         Theme.glass = Services.glassQuality
         Theme.reduceTransparency = Services.reduceTransparency
         Theme.reduceMotion = Services.reduceMotion
-        if (StartScreen === "search") home.searchOpen = true
+        Qt.callLater(win.applyStart)
+    }
+    function applyStart() {
+        if (StartPage === "search") home.searchOpen = true
+        else if (StartPage === "apps") home.showApps()
+        else if (StartPage === "edit") home.start.enterEdit()
+        else if (StartPage === "alpha") { home.showApps(); home.allApps.alpha.open = true }
+    }
+    function screenCmd(v) {
+        home.searchOpen = false; home.allApps.alpha.open = false
+        if (v !== "edit" && home.start.editing) home.start.exitEdit()
+        if (v === "shade" || v === "centre") { shadeP = 1; return }
+        shadeP = 0
+        if (v === "search") { page = "home"; home.showStart(); home.searchOpen = true }
+        else if (v === "apps") { page = "home"; home.showApps() }
+        else if (v === "alpha") { page = "home"; home.showApps(); home.allApps.alpha.open = true }
+        else if (v === "edit") { page = "home"; home.showStart(); home.start.enterEdit() }
+        else if (v === "home") { page = "home"; home.showStart() }
+        else page = v
     }
     Connections {
         target: Services
@@ -57,22 +76,18 @@ Window {
             if (k === "theme") Theme.select(v)
             else if (k === "scheme") Theme.dark = (v === "dark")
             else if (k === "open") win.openApp(v, Qt.rect(win.width / 2 - 31, win.height * 0.2, 62, 62), false)
-            else if (k === "screen") {
-                home.searchOpen = false
-                if (v === "shade") win.shadeP = 1
-                else if (v === "search") { win.page = "home"; win.shadeP = 0; home.searchOpen = true }
-                else { win.shadeP = 0; win.page = v }
-            }
+            else if (k === "screen") win.screenCmd(v)
         }
     }
 
     function gesture(name) {
-        if (name === "home") { shadeP = 0; home.searchOpen = false; page = "home" }
+        if (name === "home") { shadeP = 0; home.searchOpen = false; if (page === "home") { home.showStart(); home.start.exitEdit() } page = "home"; home.showStart() }
         else if (name === "switcher") { shadeP = 0; page = "switcher" }
         else if (name === "shade" || name === "qs") shadeP = 1
+        else if (name === "search") { shadeP = 0; page = "home"; home.searchOpen = true }
         else if (name === "back") {
             if (shadeP > 0.5) shadeP = 0
-            else if (home.searchOpen) home.searchOpen = false
+            else if (page === "home") home.goBack()
             else if (page === "switcher" || page === "app") page = "home"
         }
     }
@@ -80,7 +95,8 @@ Window {
     Item {
         id: root
         anchors.fill: parent
-        Wallpaper { id: wall; anchors.fill: parent }
+        Wallpaper { id: wall; anchors.fill: parent; visible: win.lockP < 0.995 }
+        Rectangle { anchors.fill: parent; color: "black"; opacity: win.lockP }
         // one shared, quarter-resolution snapshot of the wallpaper feeds every glass panel
         ShaderEffectSource {
             id: bsrc
@@ -98,6 +114,7 @@ Window {
             anchors.fill: parent
             anchors.topMargin: 0
             scale: (0.96 + 0.04 * win.lockP * (1 - win.switchP * 0.6)) * (1 - 0.06 * win.appP)
+            topInset: 40; bottomInset: 72
             opacity: win.page === "switcher" ? 0.0 : win.lockP
             dim: 0.28 * win.appP
             onLaunched: (n, r, real) => win.openApp(n, r, real)
@@ -123,7 +140,7 @@ Window {
             onActiveChanged: if (!active) win.page = (win.lockP > 0.35 ? "home" : "lock")
         }
 
-        StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: win.page === "app" ? Theme.text : Theme.onWall }
+        StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: "white" }
         // top-edge pull for shade
         Item {
             z: 21; anchors { top: parent.top; left: parent.left; right: parent.right } height: 44
@@ -146,10 +163,14 @@ Window {
             }
         }
         // status bar above shade too
-        StatusBar { anchors { top: parent.top; left: parent.left; right: parent.right } z: 40; visible: win.shadeP > 0.01; ink: Theme.text }
-        GestureBar {
+        StatusBar { anchors { top: parent.top; left: parent.left; right: parent.right } z: 40; visible: win.shadeP > 0.01; ink: "white" }
+        NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-            ink: win.page === "app" ? Theme.text : Theme.onWall
+            visible: win.lockP > 0.9
+            ink: "white"
+            onBack: win.gesture("back")
+            onHome: win.gesture("home")
+            onSearch: win.gesture("search")
             onDragged: (dy) => { if (win.page === "app") { win.appDrag = true; win.appP = Math.max(0.15, Math.min(1, 1 - dy / (win.height * 0.6))) } }
             onReleased: (dy, vy) => {
                 if (win.page === "app") {

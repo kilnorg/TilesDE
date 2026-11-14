@@ -10,7 +10,8 @@ qt_add_executable(flowde-shell src/main.cpp src/Services.cpp src/Services.h src/
 
 set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qml/StatusBar.qml
   qml/GestureBar.qml qml/LockScreen.qml qml/HomeScreen.qml qml/AppSwitcher.qml qml/Shade.qml
-  qml/AppIcon.qml qml/GlassIcon.qml qml/AppPage.qml qml/Toggle.qml qml/SliderRow.qml)
+  qml/AppIcon.qml qml/GlassIcon.qml qml/AppPage.qml qml/Toggle.qml qml/SliderRow.qml
+  qml/MetroTile.qml qml/TileGlyph.qml qml/TileGallery.qml qml/StartScreen.qml qml/AllApps.qml qml/AlphaJump.qml qml/NavBar.qml)
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)

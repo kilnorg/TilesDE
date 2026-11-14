@@ -1,55 +1,74 @@
 import QtQuick
 import FlowShell
 
+// Task switcher: two-column grid of flat app cards. Tap opens, x closes, "close all" at the bottom.
 Item {
     id: root
     signal picked(string name)
     signal closedAll
     signal closedOne(string name)
     property var running: []
-    readonly property var colors: ["#D97757", "#E8E6DC", "#B0AEA5", "#788C5D", "#6A9BCC"]
-    property var _unused: [
-        { name: "Messages", c: "#D97757" }, { name: "Browser", c: "#E8E6DC" },
-        { name: "Camera", c: "#B0AEA5" }, { name: "Files", c: "#788C5D" }, { name: "Noxal", c: "#6A9BCC" }]
-    visible: opacity > 0.02 && running !== undefined
-    ListView {
-        id: list
-        anchors { fill: parent; topMargin: 90; bottomMargin: 120 }
-        orientation: ListView.Horizontal; spacing: 18; leftMargin: (width - cardW) / 2; rightMargin: leftMargin
-        snapMode: ListView.SnapToItem; highlightRangeMode: ListView.StrictlyEnforceRange
-        preferredHighlightBegin: leftMargin; preferredHighlightEnd: leftMargin + cardW
-        readonly property real cardW: Math.min(root.width * 0.66, 340)
-        model: root.running.map((n, i) => ({ name: n, c: root.colors[i % 5] }))
+    visible: opacity > 0.02
+
+    Text {
+        id: head
+        anchors { top: parent.top; topMargin: 64; left: parent.left; leftMargin: Theme.pageMargin + 4 }
+        text: "running apps"; color: Theme.text
+        font.pixelSize: 30; font.family: Theme.font; font.weight: Theme.fontLight
+    }
+    Text {
+        visible: root.running.length === 0
+        anchors.centerIn: parent
+        text: "no running apps"; color: Theme.textDim
+        font.pixelSize: 18; font.family: Theme.font; font.weight: Theme.fontLight
+    }
+    GridView {
+        id: grid
+        anchors { top: head.bottom; topMargin: 16; left: parent.left; right: parent.right; bottom: parent.bottom
+                  leftMargin: Theme.pageMargin; rightMargin: Theme.pageMargin; bottomMargin: 150 }
+        clip: true
+        cellWidth: Math.floor(width / 2); cellHeight: Math.round(cellWidth * 1.45)
+        boundsBehavior: Flickable.StopAtBounds
+        model: root.running
         delegate: Item {
-            id: card
+            id: cell
             required property var modelData
             required property int index
-            width: list.cardW; height: list.height
-            // swipe up to close card (interruptible spring back)
-            property real dy: 0
-            y: dy
-            opacity: 1 + Math.min(0, dy) / 500
-            Behavior on dy { enabled: !dh.active; SpringAnimation { spring: 3; damping: 0.3; epsilon: 0.5 } }
-            GlassPanel {
-                anchors.fill: parent; radius: 30; flatOpaque: true
-                // app snapshot placeholder
-                Rectangle { anchors.fill: parent; anchors.margins: 10; anchors.topMargin: 54; radius: Theme.paper ? 10 : 22; color: card.modelData.c; opacity: 1 }
-                Row { x: 16; y: 10; spacing: 10
-                    AppIcon { size: 30; showLabel: false; label: card.modelData.name; glass: false }
-                    Text { anchors.verticalCenter: parent.verticalCenter; text: card.modelData.name; color: Theme.text; font.pixelSize: 15; font.weight: Font.DemiBold; font.family: Theme.font } }
-                MouseArea { anchors.fill: parent; onClicked: root.picked(card.modelData.name) }
-                DragHandler { id: dh; target: null; xAxis.enabled: false
-                    onTranslationChanged: card.dy = Math.min(0, translation.y)
-                    onActiveChanged: if (!active) { if (card.dy < -120) root.closedOne(card.modelData); else card.dy = 0 } }
+            width: grid.cellWidth; height: grid.cellHeight
+            Rectangle {
+                id: card
+                anchors { fill: parent; margins: Theme.tileGap / 2 }
+                color: Theme.dark ? "#1f1f1f" : "#e4e4e4"
+                scale: ma.pressed ? 0.96 : 1
+                Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.pressMs } }
+                Rectangle {
+                    id: bar
+                    width: parent.width; height: 38; color: Theme.dark ? "#2b2b2b" : "#cfcfcf"
+                    Text { anchors { left: parent.left; leftMargin: 10; right: xbtn.left; verticalCenter: parent.verticalCenter }
+                        text: String(cell.modelData).toLowerCase(); elide: Text.ElideRight; color: Theme.text
+                        font.pixelSize: 14; font.family: Theme.font }
+                    Item { id: xbtn; width: 38; height: 38; anchors.right: parent.right
+                        TileGlyph { anchors.centerIn: parent; size: 18; stroke: 2; name: "close"; color: Theme.text }
+                    }
+                }
+                Rectangle {
+                    anchors { top: bar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8 }
+                    color: Theme.accent
+                    TileGlyph { anchors.centerIn: parent; size: 56; name: String(cell.modelData).toLowerCase(); color: Theme.tileText }
+                }
+                MouseArea { id: ma; anchors.fill: parent; onClicked: root.picked(String(cell.modelData)) }
+                MouseArea { anchors { top: parent.top; right: parent.right } width: 48; height: 44
+                    onClicked: root.closedOne(String(cell.modelData)) }
             }
         }
     }
-    GlassPanel {
+    Item {
         visible: root.running.length > 0
-        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 76 }
-        width: 150; height: 44; radius: 22
-        Text { visible: false; text: "" }
-        Text { anchors.centerIn: parent; text: "Close all"; color: Theme.text; font.pixelSize: 14; font.family: Theme.font }
-        MouseArea { anchors.fill: parent; onClicked: root.closedAll() }
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 96 }
+        width: 160; height: 44
+        Rectangle { anchors.fill: parent; color: "transparent"; border.width: 2; border.color: Theme.text
+            opacity: allMa.pressed ? 0.6 : 1 }
+        Text { anchors.centerIn: parent; text: "close all"; color: Theme.text; font.pixelSize: 16; font.family: Theme.font; font.weight: Theme.fontLight }
+        MouseArea { id: allMa; anchors.fill: parent; onClicked: root.closedAll() }
     }
 }
