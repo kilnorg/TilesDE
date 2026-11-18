@@ -2,3 +2,22 @@ target/
 build/
 b-shell/
 docs/design-ref/
+
+# macOS
+.DS_Store
+
+# Third-party design references (not OSS-licensed): never commit
+docs/design-ref/
+*.ref.png
+*.ref.webp
+*.ref.jpg
+
+# AI/agent working notes and handoffs
+HANDOFF.md
+AGENTS.md
+CLAUDE.md
+AI.md
+GOAL.md
+START_PROMPT.md
+PROJECT_STATUS.md
+.claude/

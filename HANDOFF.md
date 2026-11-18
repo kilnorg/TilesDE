@@ -332,6 +332,24 @@ Public API, for the integrator: in `Main.qml` `onCommand`, any key not handled e
 4. Check the lock-screen toggle layout against the reference; fix the StatusBar ink.
 5. Commit locally as Mandrusia with no trailers.
 
+### W2-M3 Integrated and screenshotted
+
+**Goal of this milestone.** Join the W2-M1 personalisation engine and the W2-M2 controls and screens into one shell that runs in the VM: `Main.qml` routing, the control socket, and the CMake build. Then capture screenshots of each screen to prove it.
+
+**What was done.** Integration is committed locally as Mandrusia, commit 2bdd470: 72 files, no trailers, not pushed. Most of the CMake and `Main.qml` wiring was already there from the aborted run. It was kept and checked, with three fixes. In `shell/CMakeLists.txt` the QTP0004 policy is removed; with it, Qt 6.8 in the VM failed to start with `"FlowShell" is ambiguous`. In `shell/qml/Main.qml`, Home is hidden while Settings or the controls page covers the screen, because a Start tile mid-flip showed through Settings in the VM. Also in `Main.qml`, `AllApps.searchRequested` is now wired to the search gesture. A new tool, `shell/tools/w2-shots.sh`, takes the screenshots; set `SLOW=<seconds>` to wait longer before each shot, since the VM is slow.
+
+The control socket accepts these keys. `screen=settings|settings-theme|settings-lock|settings-<page>|controls|groups`. `settings=<page>|back|close`. `scroll=px|top|end`. `get=config|<key>` replies with JSON. `shot=<path>` saves the window as a PNG. The Start keys `select`, `closesheet`, `tilesize`, `unpintile`, `tilepicture` and `tilelabel` go to `home.start.command(k, v)`, and any other key goes to `Personalise.command`. Environment variables: `FLOWDE_SIZE=WxH`, `TILESDE_CONFIG`, `FLOWDE_PRESET`, `FLOWDE_SCHEME`. No new QML types were added.
+
+**Verified.** In the VM, `/tmp/shell.log` shows zero QML warnings. Eighteen screenshots are in `docs/screens/w2-*.png`, checked by eye. An accent change survives a restart: the saved JSON reads back correctly. `check-config.sh` passes in full on a local macOS build, and the local offscreen build has zero warnings.
+
+**Not verified, and known defects.** Other agents' cargo builds kept the VM busy (load around 7), so frame times there averaged 150 to 250 ms, and shots needed long waits (`SLOW=6` to `7`). Start on AMOLED still draws grain specks on pure black. The accent name "cobalt" is not accepted. Group headers are Title Case in edit mode and lowercase otherwise. Badges in the tile preview are black dots. The start+theme title glyphs sit tight against scrolled content. Tile order, size and unpin are not persisted, and neither are lock-screen settings. `docs/tiles-spec.md` and `HANDOFF.md` do not yet list the new socket keys; those files are not owned by this work. `shell/assets/.DS_Store` is left untracked and out of the commit.
+
+**Next steps.**
+1. Fix the known defects above, starting with the persistence gaps for tile order, size, unpin and lock-screen settings.
+2. Add the new socket keys to `docs/tiles-spec.md` and `HANDOFF.md`, with the owner's agreement.
+3. Re-run `tools/w2-shots.sh` once the VM is quiet, without `SLOW` if load allows, and replace any shots that changed.
+4. Push only if the owner asks; the commit stays local.
+
 
 ## Project 2: Glaze desktop (paused; agents died on a rate limit)
 
