@@ -11,6 +11,7 @@ Item {
     property bool pagerDrag: false
     property int topInset: 48
     property int bottomInset: 96
+    property real kbH: 0                         // on-screen keyboard height (lifts the search results)
     readonly property bool editing: start.editing
     property alias start: start
     property alias allApps: apps
@@ -111,12 +112,13 @@ Item {
                 verticalAlignment: TextInput.AlignVCenter
                 color: Theme.text; font.pixelSize: 22; font.family: Theme.font; font.weight: Font.Light
                 onTextChanged: root.query = text; focus: root.searchOpen; clip: true
+                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 Text { visible: !input.text.length; text: "search"; color: Theme.textDim; font: input.font; anchors.verticalCenter: parent.verticalCenter }
             }
         }
         ListView {
             id: results
-            anchors { left: parent.left; right: parent.right; top: bar.bottom; bottom: parent.bottom; topMargin: 8; bottomMargin: root.bottomInset }
+            anchors { left: parent.left; right: parent.right; top: bar.bottom; bottom: parent.bottom; topMargin: 8; bottomMargin: root.bottomInset + root.kbH }
             clip: true
             model: root.searchable
             delegate: Item {

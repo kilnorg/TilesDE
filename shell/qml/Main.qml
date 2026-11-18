@@ -128,7 +128,16 @@ Window {
         }
     }
 
+    // on-screen keyboard: shown while a text field has focus (TilesKeyboard types into that field)
+    readonly property Item focusTarget: {
+        const f = win.activeFocusItem
+        return (f && typeof f.cursorPosition === "number" && typeof f.insert === "function" && !f.readOnly) ? f : null
+    }
+    property bool oskDismissed: false
+    onFocusTargetChanged: oskDismissed = false
+
     function gesture(name) {
+        if (name === "back" && kb.shown) { oskDismissed = true; return }
         if (page === "lock" && name !== "shade" && name !== "qs") return
         if (overlay !== "" && (name === "home" || name === "back")) { overlay = ""; return }
         if (settingsOpen && name === "back" && shadeP < 0.5) { settings.back(); return }
@@ -176,7 +185,7 @@ Window {
             anchors.fill: parent
             anchors.topMargin: 0
             scale: Theme.tiles ? (1 - 0.06 * win.appP) : (0.96 + 0.04 * win.lockP * (1 - win.switchP * 0.6)) * (1 - 0.06 * win.appP)
-            topInset: 28; bottomInset: 56
+            topInset: 28; bottomInset: 56; kbH: kb.visibleH
             opacity: win.page === "switcher" ? 0.0 : win.lockP
             // hidden under a full-screen Settings/controls layer: 3D tile flips otherwise poke through it
             visible: win.overlay === "" && !(win.settingsOpen && settings.opacity > 0.99)
@@ -196,7 +205,7 @@ Window {
         AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; z: 15; onBack: win.gesture("home") }
         SettingsApp {
             id: settings
-            anchors.fill: parent; anchors.bottomMargin: 56; z: 16
+            anchors.fill: parent; anchors.bottomMargin: 56 + kb.visibleH; z: 16
             topInset: 36
             visible: opacity > 0.01
             enabled: win.settingsOpen
@@ -252,6 +261,13 @@ Window {
         }
         // status bar above shade too
         StatusBar { anchors { top: parent.top; left: parent.left; right: parent.right } z: 40; visible: win.shadeP > 0.01; ink: Theme.text }
+        TilesKeyboard {
+            id: kb; z: 45
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 56 }
+            target: win.focusTarget
+            shown: win.focusTarget !== null && !win.oskDismissed && win.lockP > 0.9
+            onHideRequested: win.oskDismissed = true
+        }
         NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             visible: win.lockP > 0.9

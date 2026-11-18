@@ -15,17 +15,22 @@ Item {
     opacity: open ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.reduceMotion ? 0 : 160 } }
 
-    Rectangle { anchors.fill: parent; color: Qt.rgba(Theme.pageBg.r, Theme.pageBg.g, Theme.pageBg.b, 0.95) }
+    Rectangle { anchors.fill: parent; color: Theme.pageBg }
     MouseArea { anchors.fill: parent; onClicked: root.closed() }
 
+    // 4 x 7 grid that fills the space between the status bar and the nav bar (Windows Phone jump list):
+    // letters with apps are solid accent squares, the rest are dark and inert
+    readonly property real topPad: 56
+    readonly property real botPad: 76
     Grid {
         id: grid
         columns: 4
         spacing: Theme.tileGap
-        anchors.centerIn: parent
-        readonly property real cell: Math.floor((root.width - 2 * Theme.pageMargin - 3 * Theme.tileGap) / 4)
-        scale: root.open ? 1 : 0.92
-        Behavior on scale { NumberAnimation { duration: Theme.reduceMotion ? 0 : 200; easing.type: Easing.OutCubic } }
+        x: Theme.pageMargin; y: root.topPad
+        readonly property real cellW: Math.floor((root.width - 2 * Theme.pageMargin - 3 * Theme.tileGap) / 4)
+        readonly property real cellH: Math.floor((root.height - root.topPad - root.botPad - 6 * Theme.tileGap) / 7)
+        opacity: root.open ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.reduceMotion ? 0 : 160 } }
 
         Repeater {
             model: root.letters
@@ -34,18 +39,17 @@ Item {
                 required property string modelData
                 required property int index
                 readonly property bool has: root.available[modelData] === true
-                width: grid.cell; height: grid.cell
+                width: grid.cellW; height: grid.cellH
                 radius: Theme.tileRadius
-                color: has ? (ma.pressed ? Theme.accent : "transparent") : "transparent"
-                border.width: has ? 2 : 1; border.color: has ? Theme.accent : Theme.textDim
-                opacity: has ? 1 : 0.35
+                color: has ? (ma.pressed ? Qt.lighter(Theme.accent, 1.25) : Theme.accent) : (Theme.dark ? "#1a1a1a" : "#e2e2e2")
                 scale: ma.pressed ? 0.94 : 1
                 Behavior on scale { NumberAnimation { duration: Theme.reduceMotion ? 0 : 90 } }
                 Text {
-                    anchors { left: parent.left; bottom: parent.bottom; leftMargin: 8; bottomMargin: 4 }
+                    anchors { left: parent.left; bottom: parent.bottom; leftMargin: 10; bottomMargin: 4 }
                     text: cell.modelData
-                    color: cell.has ? (ma.pressed ? Theme.onColor(Theme.accent) : Theme.accent) : Theme.textDim
-                    font.family: "Inter"; font.weight: Theme.fontLight; font.pixelSize: 40
+                    color: cell.has ? Theme.onColor(Theme.accent) : Theme.textDim
+                    opacity: cell.has ? 1 : 0.45
+                    font.family: Theme.font; font.weight: Theme.fontLight; font.pixelSize: Math.min(44, grid.cellH * 0.5)
                 }
                 MouseArea {
                     id: ma
