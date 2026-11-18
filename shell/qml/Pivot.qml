@@ -71,11 +71,18 @@ Item {
                 id: titleRep
                 model: root._titles
                 Text {
+                    id: tt
                     required property int index
                     required property string modelData
                     text: Theme.title ? Theme.title(modelData) : modelData.toLowerCase()
                     color: Theme.text
-                    font.family: Theme.font; font.pixelSize: root.titleSize
+                    // overflow past the edge is only allowed when another page follows; otherwise shrink to fit
+                    TextMetrics { id: tm; text: tt.text; font.family: Theme.font; font.pixelSize: root.titleSize
+                        font.weight: Theme.fontLight; font.letterSpacing: -1.5 }
+                    readonly property bool hasNext: index < root.count - 1
+                    font.family: Theme.font
+                    font.pixelSize: hasNext || tm.advanceWidth <= root.width - 36
+                        ? root.titleSize : Math.floor(root.titleSize * (root.width - 36) / tm.advanceWidth)
                     font.weight: Theme.fontLight; font.letterSpacing: -1.5
                     opacity: 1 - 0.62 * Math.min(1, Math.abs(root.prog - index))
                     TapHandler { onTapped: root.goTo(index) }
