@@ -57,19 +57,9 @@ Item {
     Behavior on tiltY { enabled: !Theme.reduceMotion; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.01 } }
     Behavior on pressScale { enabled: !Theme.reduceMotion; SpringAnimation { spring: 5; damping: 0.4; epsilon: 0.001 } }
 
-    // flip with perspective: rotation about the tile's horizontal centre axis, projected, then scaled so
-    // the near edge never grows past the cell (flip stays inside its gutter)
-    readonly property real _persp: 900
-    readonly property var flipM: {
-        const a = flipAngle * Math.PI / 180, c = Math.cos(a), s = Math.sin(a)
-        const cx = width / 2, cy = height / 2, d = _persp
-        const k = 1 - (height / 2) * Math.abs(s) / d
-        return Qt.matrix4x4(
-            k, -cx * s / d, 0, cx - k * cx + cx * s * cy / d,
-            0, k * c - cy * s / d, 0, cy - k * c * cy + cy * cy * s / d,
-            0, s, 1, -s * cy,
-            0, -s / d, 0, 1 + s * cy / d)
-    }
+    // real flip: the whole card turns about its horizontal centre axis (true 3D rotation, front and back
+    // faces swap at 90 degrees); a small scale dip at mid-turn gives depth and keeps it inside its gutter
+    readonly property real _depth: 1 - 0.10 * Math.abs(Math.sin(flipAngle * Math.PI / 180))
     // glyph size from the nominal tile size, so it does not repaint while the cell animates
     readonly property real nomW: Theme.tileW(size, screenW)
     readonly property real nomH: Theme.tileH(size, screenW)
@@ -83,7 +73,8 @@ Item {
         transform: [
             Rotation { origin.x: body.width / 2; origin.y: body.height / 2; axis { x: 1; y: 0; z: 0 } angle: root.tiltX },
             Rotation { origin.x: body.width / 2; origin.y: body.height / 2; axis { x: 0; y: 1; z: 0 } angle: root.tiltY },
-            Matrix4x4 { matrix: root.flipM }
+            Rotation { origin.x: body.width / 2; origin.y: body.height / 2; axis { x: 1; y: 0; z: 0 } angle: root.flipAngle },
+            Scale { origin.x: body.width / 2; origin.y: body.height / 2; xScale: root._depth; yScale: root._depth }
         ]
 
         // front face
