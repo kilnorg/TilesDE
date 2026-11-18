@@ -155,7 +155,8 @@ Window {
         else if (name === "back") {
             if (shadeP > 0.5) shadeP = 0
             else if (page === "home") home.goBack()
-            else if (page === "switcher" || page === "app") page = "home"
+            else if (page === "app") { if (!appPage.systemBack()) page = "home" }
+            else if (page === "switcher") page = "home"
         }
     }
 
@@ -202,7 +203,7 @@ Window {
             onClosedAll: { win.openApps = []; win.page = "home" }
             onClosedOne: (n) => win.openApps = win.openApps.filter(x => x !== n)
         }
-        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; z: 15; onBack: win.gesture("home") }
+        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; kbH: kb.visibleH; z: 15; onBack: win.gesture("home") }
         SettingsApp {
             id: settings
             anchors.fill: parent; anchors.bottomMargin: 56 + kb.visibleH; z: 16

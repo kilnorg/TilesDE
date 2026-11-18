@@ -183,7 +183,7 @@ Item {
                             if (!occ[rr]) { occ[rr] = []; for (let q = 0; q < cols; q++) occ[rr].push(false) }
                             for (let cc = c; cc < c + cw; cc++) occ[rr][cc] = true
                         }
-                        const ty = y + r * (u + g)
+                        const ty = collapsed ? y : y + r * (u + g)
                         out[i] = { x: m + c * (u + g), y: ty, w: Theme.tileW(sz, width), h: Theme.tileH(sz, width),
                                    row: Math.round(ty / (u + g)), col: c, hidden: collapsed, sec: s }
                         rows = Math.max(rows, r + ch)
@@ -332,6 +332,7 @@ Item {
                 delegate: TileGroupHeader {
                     required property var modelData
                     x: Theme.pageMargin; y: modelData.y
+                    Behavior on y { enabled: !Theme.reduceMotion; NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
                     width: content.width - 2 * Theme.pageMargin
                     height: root.headH
                     text: modelData.name
@@ -410,10 +411,14 @@ Item {
                     y: dragging ? dragY : (lay ? lay.y : 0)
                     width: lay ? lay.w : 0
                     height: lay ? lay.h : 0
-                    visible: lay !== null && !lay.hidden && Math.abs(turn) < 89.5
+                    // collapse / expand: tiles tuck under their group heading while fading, then the groups below glide up
+                    property real showP: (lay !== null && !lay.hidden) ? 1 : 0
+                    Behavior on showP { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
+                    opacity: showP
+                    visible: lay !== null && showP > 0.01 && Math.abs(turn) < 89.5
                     z: dragging ? 10 : 0
                     transformOrigin: Item.Center
-                    scale: root.editing ? (dragging ? 1.04 : 0.88) : 1
+                    scale: (root.editing ? (dragging ? 1.04 : 0.88) : 1) * (0.9 + 0.1 * showP)
                     Behavior on x { enabled: !cell.dragging && !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                     Behavior on y { enabled: !cell.dragging && !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                     Behavior on width { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }

@@ -1,5 +1,6 @@
 import QtQuick
 import FlowShell
+import "apps/index.js" as NativeApps
 
 // Built-in app page with turnstile transition: the page swings about its left edge in Y, angle -90 deg (p = 0)
 // to 0 (p = 1). Solid page, accent title bar, a few mock blocks per app name. Real data comes later.
@@ -9,8 +10,16 @@ Item {
     property rect from: Qt.rect(240, 560, 62, 62)   // kept for API compatibility; unused by the turnstile
     property real fromRadius: 0
     signal back
+    // shell back gesture: let the native app close an inner view first; true = handled by the app
+    function systemBack() {
+        const it = nativeL.item
+        if (nativeSrc !== "" && it && typeof it.back === "function") { it.back(); return true }
+        return false
+    }
     property bool launching: false                   // real app being started: placeholder until its window maps
     property real p: 0                               // 0 hidden .. 1 fully open; spring/finger-driven by Main
+    property real kbH: 0                             // on-screen keyboard height (apps shrink above it)
+    readonly property string nativeSrc: NativeApps.source(name)
     property real sw: 540
     property real sh: 1170
     visible: p > 0.005
@@ -31,7 +40,8 @@ Item {
         // accent title bar
         Rectangle {
             id: head
-            width: parent.width; height: 132; color: Theme.accent
+            visible: root.nativeSrc === ""
+            width: parent.width; height: visible ? 132 : 0; color: Theme.accent
             Item {
                 x: 4; y: 44; width: 52; height: 44
                 TileGlyph { anchors.centerIn: parent; size: 24; stroke: 2.5; name: "back"; color: Theme.onColor(Theme.accent) }
@@ -44,9 +54,18 @@ Item {
 
         Item {
             id: body
-            anchors { top: head.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: 80 }
+            anchors { top: head.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; bottomMargin: (root.nativeSrc !== "" ? 56 : 80) + root.kbH }
+            Loader {
+                id: nativeL
+                anchors.fill: parent
+                active: root.nativeSrc !== ""
+                source: root.nativeSrc
+                onLoaded: if (item.hasOwnProperty("topInset")) item.topInset = 36
+                Connections { target: nativeL.item; ignoreUnknownSignals: true; function onCloseRequested() { root.back() } }
+            }
             Loader {
                 anchors.fill: parent
+                active: root.nativeSrc === ""
                 sourceComponent: {
                     switch (root.name) {
                     case "Clock": return clockC

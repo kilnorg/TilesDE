@@ -49,7 +49,7 @@ Item {
         width: parent.width; height: parent.height
         x: -root.pagerP * width * 0.3
         opacity: root.searchOpen ? 0.1 : 1 - root.pagerP * 0.9
-        visible: root.pagerP < 0.999
+        visible: root.pagerP < 0.999 && !(root.searchOpen && searchLayer.opacity > 0.99)   // fully covered by search: stop rendering it
         pagerP: root.pagerP
         topInset: root.topInset
         bottomInset: root.bottomInset
@@ -98,8 +98,10 @@ Item {
 
     // search overlay (flat, black)
     Item {
+        id: searchLayer
         anchors.fill: parent; visible: opacity > 0.01; opacity: root.searchOpen ? 1 : 0
         z: 4
+        Rectangle { anchors.fill: parent; color: Theme.pageBg }
         Behavior on opacity { enabled: !Theme.reduceMotion; NumberAnimation { duration: 180 } }
         MouseArea { anchors.fill: parent; onClicked: root.searchOpen = false }
         Rectangle {

@@ -5,6 +5,8 @@
 #include <QQuickWindow>
 #include <QSize>
 #include "AppModel.h"
+#include "AppStore.h"
+#include "Sys.h"
 #include "Personalise.h"
 #include "Services.h"
 
@@ -18,9 +20,13 @@ int main(int argc, char **argv) {
     if (qEnvironmentVariableIsSet("FLOWDE_SCHEME")) pers->setScheme(qEnvironmentVariable("FLOWDE_SCHEME"));
     Services services;
     AppModel apps;
+    AppStore appStore;
+    Sys sys;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("Services", &services);
     engine.rootContext()->setContextProperty("Apps", &apps);
+    engine.rootContext()->setContextProperty("AppStore", &appStore);
+    engine.rootContext()->setContextProperty("Sys", &sys);
     engine.rootContext()->setContextProperty("StartPage", qEnvironmentVariable("FLOWDE_START", "lock"));
     engine.rootContext()->setContextProperty("StartTheme", qEnvironmentVariable("FLOWDE_THEME", "Tiles"));
     // FLOWDE_SIZE=WxH: window size (default 540x1170, the design size). The UI scales to the window width.

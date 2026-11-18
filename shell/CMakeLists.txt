@@ -6,7 +6,7 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network ShaderTools)
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_executable(flowde-shell src/main.cpp src/Services.cpp src/Services.h src/AppModel.cpp src/AppModel.h)
+qt_add_executable(flowde-shell src/main.cpp src/Services.cpp src/Services.h src/AppModel.cpp src/AppModel.h src/AppStore.cpp src/AppStore.h)
 
 set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qml/StatusBar.qml
   qml/GestureBar.qml qml/LockScreen.qml qml/HomeScreen.qml qml/AppSwitcher.qml qml/Shade.qml
@@ -20,10 +20,11 @@ set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qm
   qml/settings/SettingsTilePreview.qml qml/settings/SettingsGroupManager.qml
   qml/settings2/index.js qml/settings2/SettingsDisplay.qml qml/settings2/SettingsNotifications.qml qml/settings2/SettingsBattery.qml
   qml/settings2/SettingsNetwork.qml qml/settings2/SettingsAbout.qml qml/settings2/SettingsSound.qml qml/settings2/SettingsEmail.qml
-  qml/settings2/SettingsDevices.qml)
+  qml/settings2/SettingsDevices.qml
+  qml/apps/index.js qml/apps/ClockApp.qml qml/apps/CalculatorApp.qml qml/apps/CalendarApp.qml qml/apps/NotesApp.qml qml/apps/PhoneApp.qml qml/apps/PeopleApp.qml qml/apps/MessagesApp.qml qml/apps/WeatherApp.qml qml/apps/MusicApp.qml qml/apps/MailApp.qml qml/apps/FilesApp.qml qml/apps/BrowserApp.qml qml/apps/CameraApp.qml qml/apps/GamesApp.qml qml/apps/MapsApp.qml qml/apps/NoxalApp.qml qml/apps/PhotosApp.qml qml/apps/PodcastsApp.qml qml/apps/RadioApp.qml qml/apps/RecorderApp.qml qml/apps/RemindersApp.qml qml/apps/StoreApp.qml qml/apps/TerminalApp.qml qml/apps/VideosApp.qml qml/apps/WalletApp.qml)
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
+qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h src/Sys.cpp src/Sys.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
 qt_add_shaders(flowde-shell "flowde-shaders" PREFIX "/FlowShell" FILES shaders/glass.frag shaders/wallpaper.frag shaders/icon.frag
   OUTPUTS shaders/glass.frag.qsb shaders/wallpaper.frag.qsb shaders/icon.frag.qsb BATCHABLE
   GLSL "100 es,120,150" NOHLSL NOMSL)
