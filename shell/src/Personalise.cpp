@@ -12,7 +12,7 @@
 #include <QtMath>
 
 namespace {
-const QStringList kBuiltin = {"glaze", "classic", "mono", "paper"};
+const QStringList kBuiltin = {"glaze", "classic", "colourful", "mono", "paper"};
 const QStringList kAccentColours = {"#D97757", "#E5484D", "#E8508C", "#A855D6", "#6E56CF", "#3E63DD",
                                     "#0F8BD6", "#12A594", "#30A46C", "#7D9A2E", "#E5A100", "#7A7A7A"};
 const QStringList kAccentNames = {"terracotta", "red", "pink", "purple", "indigo", "blue",
@@ -31,15 +31,19 @@ QVariantList list(const QStringList &l) { QVariantList r; for (const auto &s : l
 QVariantMap builtin(const QString &n) {
     QVariantMap m;
     if (n == "glaze")        // terracotta / ink / paper tiles on dark paper, from the Glaze start menu
-        m = {{"label", "glaze"}, {"scheme", "dark"}, {"accent", "#d97757"}, {"palette", list({"#d97757", "#22211f", "#d8d6cf"})},
+        m = {{"label", "glaze"}, {"scheme", "amoled"}, {"accent", "#d97757"}, {"palette", list({"#d97757", "#22211f", "#d8d6cf"})},
              {"bgDark", "#363532"}, {"bgLight", "#ffffff"}, {"cardDark", "#2a2927"}, {"cardLight", "#f0f0f0"},
              {"textDark", "#f4f2ec"}, {"dimDark", "#a8a59c"}, {"tileRadius", 0}, {"gap", 6}, {"tileOpacity", 1.0}, {"grain", 0.6}};
     else if (n == "classic") // four-colour phone palette on black
-        m = {{"label", "classic"}, {"scheme", "dark"}, {"accent", "#1ba1e2"}, {"palette", list({"#e8a900", "#1ba1e2", "#339933", "#a20025"})},
+        m = {{"label", "classic"}, {"scheme", "amoled"}, {"accent", "#1ba1e2"}, {"palette", list({"#e8a900", "#1ba1e2", "#339933", "#a20025"})},
+             {"bgDark", "#000000"}, {"bgLight", "#ffffff"}, {"cardDark", "#1b1b1b"}, {"cardLight", "#f0f0f0"},
+             {"textDark", "#ffffff"}, {"dimDark", "#9a9a9a"}, {"tileRadius", 0}, {"gap", 6}, {"tileOpacity", 1.0}, {"grain", 0.0}};
+    else if (n == "colourful") // vivid multi-colour tiles on pure black
+        m = {{"label", "colourful"}, {"scheme", "amoled"}, {"accent", "#0050ef"}, {"palette", list({"#d80073", "#0050ef", "#60a917", "#fa6800", "#aa00ff", "#00aba9", "#e51400", "#a4c400"})},
              {"bgDark", "#000000"}, {"bgLight", "#ffffff"}, {"cardDark", "#1b1b1b"}, {"cardLight", "#f0f0f0"},
              {"textDark", "#ffffff"}, {"dimDark", "#9a9a9a"}, {"tileRadius", 0}, {"gap", 6}, {"tileOpacity", 1.0}, {"grain", 0.0}};
     else if (n == "mono")
-        m = {{"label", "mono"}, {"scheme", "dark"}, {"accent", "#8a8a8a"}, {"palette", list({"#3a3a3a", "#5a5a5a", "#8a8a8a", "#b5b5b5"})},
+        m = {{"label", "mono"}, {"scheme", "amoled"}, {"accent", "#8a8a8a"}, {"palette", list({"#3a3a3a", "#5a5a5a", "#8a8a8a", "#b5b5b5"})},
              {"bgDark", "#000000"}, {"bgLight", "#ffffff"}, {"cardDark", "#1b1b1b"}, {"cardLight", "#f0f0f0"},
              {"textDark", "#ffffff"}, {"dimDark", "#9a9a9a"}, {"tileRadius", 0}, {"gap", 6}, {"tileOpacity", 1.0}, {"grain", 0.0}};
     else if (n == "paper")   // light glaze
@@ -101,7 +105,7 @@ Personalise::~Personalise() { if (m_save.isActive()) saveNow(); }
 void Personalise::defaults() {
     m_preset = "glaze";
     const QVariantMap d = builtin("glaze");
-    m_scheme = "dark"; m_accent = "#d97757"; m_tileOpacity = 1.0; m_tileRadius = 0; m_gap = 6; m_columns = 4;
+    m_scheme = "amoled"; m_accent = "#d97757"; m_tileOpacity = 1.0; m_tileRadius = 0; m_gap = 6; m_columns = 4;
     m_grain = d["grain"].toDouble(); m_tilesOverWallpaper = false; m_labels = true; m_badges = true;
     m_flipSpeed = 1; m_fontWeight = 300; m_titleCase = "lower"; m_motion = "normal"; m_startPhoto.clear();
     m_groups = {QVariantMap{{"name", "Productivity"}, {"collapsed", false}}, QVariantMap{{"name", "Explore"}, {"collapsed", false}}};
