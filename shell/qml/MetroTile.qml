@@ -128,9 +128,9 @@ Item {
         SequentialAnimation {
             loops: Animation.Infinite
             PauseAnimation { duration: Theme.flipPeriodMs / 2 - Theme.flipMs }
-            NumberAnimation { target: root; property: "flipAngle"; from: 0; to: 180; duration: Theme.flipMs; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: root; property: "flipAngle"; from: 0; to: 180; duration: Theme.flipMs; easing.type: Easing.InOutSine }
             PauseAnimation { duration: Theme.flipPeriodMs / 2 - Theme.flipMs }
-            NumberAnimation { target: root; property: "flipAngle"; from: 180; to: 360; duration: Theme.flipMs; easing.type: Easing.InOutQuad }
+            NumberAnimation { target: root; property: "flipAngle"; from: 180; to: 360; duration: Theme.flipMs; easing.type: Easing.InOutSine }
             ScriptAction { script: root.flipAngle = 0 }
         }
     }

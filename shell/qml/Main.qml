@@ -241,6 +241,7 @@ Window {
             width: parent.width; height: parent.height
             progress: win.shadeP
             onOpenSettings: win.openSettings("home")
+            onLockRequested: { win.shadeP = 0; win.page = "lock"; win.lockP = 0 }
             // swipe up on shade closes it
             DragHandler {
                 id: shadeCloseDrag

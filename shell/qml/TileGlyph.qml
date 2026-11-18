@@ -54,6 +54,9 @@ Canvas {
         case "calendar":
             rr(c, 6, 10, 36, 32, 2); ln(c, 6, 19, 42, 19); ln(c, 15, 5, 15, 14); ln(c, 33, 5, 33, 14)
             ln(c, 14, 27, 18, 27); ln(c, 22, 27, 26, 27); ln(c, 30, 27, 34, 27); ln(c, 14, 34, 18, 34); ln(c, 22, 34, 26, 34); break
+        case "lock":
+            rr(c, 10, 21, 28, 21, 2); c.moveTo(16, 21); c.lineTo(16, 15); c.bezierCurveTo(16, 6, 32, 6, 32, 15); c.lineTo(32, 21)
+            ln(c, 24, 28, 24, 34); break
         case "clock":
             ell(c, 24, 24, 18, 18); c.moveTo(24, 12); c.lineTo(24, 24); c.lineTo(32, 29); break
         case "photos":

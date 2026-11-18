@@ -240,8 +240,8 @@ QtObject {
     readonly property real tiltScale: ({ off: 0, low: 0.5, normal: 1.0, high: 1.5 })[Personalise.motion]
     readonly property int flipSpeed: Personalise.flipSpeed                        // 0 off, 1 normal, 2 fast
     readonly property bool flipEnabled: !reduceMotion && flipSpeed > 0
-    readonly property int flipMs: flipEnabled ? Math.round((flipSpeed === 2 ? 300 : 450) * Math.max(0.6, motionScale)) : 0
-    readonly property int flipPeriodMs: flipSpeed === 2 ? 3500 : 6000
+    readonly property int flipMs: flipEnabled ? Math.round((flipSpeed === 2 ? 650 : 1000) * Math.max(0.6, motionScale)) : 0
+    readonly property int flipPeriodMs: flipSpeed === 2 ? 5000 : 8000
     readonly property int flipStaggerMs: 140
     readonly property int pressMs: Math.round(140 * motionScale)
     readonly property int turnstileMs: Math.round(320 * motionScale)

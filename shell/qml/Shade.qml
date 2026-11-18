@@ -9,6 +9,7 @@ Item {
     visible: progress > 0.001
     y: -(1 - Math.min(1, Math.max(0, progress))) * height
     signal openSettings
+    signal lockRequested
     // notification app name -> TileGlyph name
     function glyphFor(app) {
         const a = String(app).toLowerCase()
@@ -83,6 +84,11 @@ Item {
             Text { text: "CLEAR ALL"; color: Theme.text; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold
                 anchors.verticalCenter: parent.verticalCenter } }
         MouseArea { anchors.fill: clearRow; anchors.margins: -12; onClicked: Services.notifications.clear() }
+        Row { id: lockRow; spacing: 10; anchors { horizontalCenter: parent.horizontalCenter; verticalCenter: parent.verticalCenter }
+            TileGlyph { size: 18; stroke: 2.4; name: "lock"; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: "LOCK"; color: Theme.text; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold
+                anchors.verticalCenter: parent.verticalCenter } }
+        MouseArea { anchors.fill: lockRow; anchors.margins: -12; onClicked: root.lockRequested() }
         Row { id: setRow; spacing: 10; anchors { right: parent.right; verticalCenter: parent.verticalCenter }
             TileGlyph { size: 18; stroke: 2.4; name: "settings"; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
             Text { text: "ALL SETTINGS"; color: Theme.text; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold
