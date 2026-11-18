@@ -96,18 +96,36 @@ Item {
         y: root.headerHeight
         width: parent.width; height: parent.height - root.headerHeight
         contentWidth: row.width; contentHeight: height
-        flickableDirection: Flickable.HorizontalFlick
-        boundsBehavior: Flickable.StopAtBounds
-        flickDeceleration: 6000
-        maximumFlickVelocity: 3000
-        onDraggingChanged: if (!dragging && !flicking) root._settle()
-        onFlickEnded: root._settle()
+        // swiping is driven by the DragHandler below (it takes the grab from row MouseAreas, so a swipe never
+        // turns into a tap), the Flickable only holds the content position
+        interactive: false
         Row { id: row }
         NumberAnimation { id: snap; target: flick; property: "contentX"; easing.type: Easing.OutCubic }
     }
-    function _settle() {
-        var i = Math.round(flick.contentX / width)
-        if (flick.horizontalVelocity > 400) i = Math.ceil(flick.contentX / width - 0.01)
+    // Windows Phone style pivot swipe: page follows the finger, a flick or half a page commits
+    DragHandler {
+        id: swipe
+        target: null
+        xAxis.enabled: true; yAxis.enabled: false
+        grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.CanTakeOverFromHandlersOfDifferentType | PointerHandler.ApprovesTakeOver
+        property real startX: 0
+        onActiveChanged: {
+            if (active) { snap.stop(); startX = flick.contentX }
+            else root._settle(centroid.velocity.x)
+        }
+        onTranslationChanged: if (active) {
+            const max = Math.max(0, (root.count - 1) * root.width)
+            let x = startX - translation.x
+            if (x < 0) x = x * 0.35                       // rubber band past the ends
+            else if (x > max) x = max + (x - max) * 0.35
+            flick.contentX = x
+        }
+    }
+    function _settle(vx) {
+        var p = flick.contentX / width, i = Math.round(p)
+        if (vx < -500) i = Math.ceil(p - 0.01)
+        else if (vx > 500) i = Math.floor(p + 0.01)
+        i = Math.max(0, Math.min(count - 1, i))
         goTo(i)
         if (i !== currentIndex) { currentIndex = Math.max(0, Math.min(count - 1, i)); pageChanged(currentIndex) }
     }
