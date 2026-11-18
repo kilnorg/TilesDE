@@ -35,7 +35,7 @@ Item {
         _top = "home"
     }
     function back() {
-        if (stack.count <= 1) { closed(); return }
+        if (stack.count <= 1) { if (homeIndex > 0) { homeIndex -= 1; return } closed(); return }
         var i = stack.count - 1
         while (i > 0 && stack.get(i).leaving) --i
         if (i < 1) return
