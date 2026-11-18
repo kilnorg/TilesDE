@@ -20,6 +20,13 @@ Item {
     property bool flat: false                      // no press effect (edit mode etc.)
     property bool flipEnabled: true                // lets the host pause flips (app open, edit mode)
     readonly property color fill: accent.a > 0 ? accent : Theme.accent
+    property real fillOpacity: Theme.tileOpacity   // translucent tiles over the wallpaper (Personalise.tileOpacity)
+    property bool picture: false                   // photo tile: no solid fill, content goes into frontLayer
+    readonly property color ink: picture ? "#ffffff" : Theme.onColor(fill)   // glyph / label / back text colour for this fill
+    property bool showLabel: Theme.showLabels
+    property real glyphScale: 1
+    property alias frontLayer: frontLayerItem.data  // picture / pattern drawn over the fill, under glyph and label
+    property alias frontItem: front
     readonly property bool pressed: ma.pressed || forcePressed
     property bool forcePressed: false              // test hook
     property point touch: Qt.point(width / 2, height / 2)
@@ -84,20 +91,21 @@ Item {
             id: front
             anchors.fill: parent
             visible: !root.showingBack
-            Rectangle { anchors.fill: parent; color: root.fill; radius: Theme.tileRadius }
+            Rectangle { visible: !root.picture; anchors.fill: parent; color: root.fill; radius: Theme.tileRadius; opacity: root.fillOpacity }
+            Item { id: frontLayerItem; anchors.fill: parent }
             TileGlyph {
                 anchors.centerIn: parent
                 anchors.verticalCenterOffset: root.size === "small" ? 0 : -Math.round(root.nomH * 0.04)
-                size: root.size === "small" ? Math.round(root.nomW * 0.5) : Math.round(Math.min(root.nomW, root.nomH) * (root.size === "large" ? 0.36 : 0.42))
+                size: Math.round(root.glyphScale * (root.size === "small" ? root.nomW * 0.5 : Math.min(root.nomW, root.nomH) * (root.size === "large" ? 0.36 : 0.42)))
                 stroke: root.size === "small" ? 3 : 3.8
                 name: root.glyph
-                color: Theme.tileText
+                color: root.ink
             }
             Text {
-                visible: root.size !== "small" && root.label !== ""
+                visible: root.showLabel && root.size !== "small" && root.label !== ""
                 anchors { left: parent.left; bottom: parent.bottom; leftMargin: 8; bottomMargin: 6; right: parent.right; rightMargin: 8 }
-                text: root.label; elide: Text.ElideRight
-                color: Theme.tileText; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.Normal
+                text: Theme.title(root.label); elide: Text.ElideRight
+                color: root.ink; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.Normal
             }
         }
         // back face: pre-rotated half a turn so it reads upright once the body has flipped
@@ -106,7 +114,7 @@ Item {
             anchors.fill: parent
             visible: root.showingBack
             transform: Rotation { origin.x: backFace.width / 2; origin.y: backFace.height / 2; axis { x: 1; y: 0; z: 0 } angle: 180 }
-            Rectangle { anchors.fill: parent; color: root.fill; radius: Theme.tileRadius }
+            Rectangle { anchors.fill: parent; color: root.fill; radius: Theme.tileRadius; opacity: root.fillOpacity }
             Item { id: backContent; anchors.fill: parent }
         }
     }

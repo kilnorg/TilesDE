@@ -9,6 +9,7 @@ Item {
     property string filter: ""
     signal launched(string name, rect r)
     signal pinRequested(string name)
+    signal searchRequested()
 
     readonly property int rowH: 72
     readonly property real iconS: 52
@@ -111,14 +112,14 @@ Item {
         scrollAnim.start()
     }
 
-    Rectangle { anchors.fill: parent; color: "black" }
+    Rectangle { anchors.fill: parent; color: Theme.pageBg }
 
     Text {
         id: title
         x: Theme.pageMargin; y: 44
         text: "apps"
-        color: Theme.tileText
-        font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 44
+        color: Theme.text
+        font.family: Theme.font; font.weight: Theme.fontLight; font.pixelSize: 44
     }
 
     ListView {
@@ -163,7 +164,7 @@ Item {
                 x: Theme.pageMargin + (root.iconS - root.headS) / 2; anchors.verticalCenter: parent.verticalCenter
                 width: root.headS; height: root.headS
                 color: hma.pressed ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : "transparent"
-                border.width: 1; border.color: Theme.accent
+                border.width: 2; border.color: Theme.accent; radius: Theme.tileRadius
                 Text {
                     anchors.centerIn: parent
                     text: row.modelData.letter
@@ -182,20 +183,20 @@ Item {
                 Rectangle {
                     id: ico
                     x: Theme.pageMargin; anchors.verticalCenter: parent.verticalCenter
-                    width: root.iconS; height: root.iconS
-                    color: Theme.accent
+                    width: root.iconS; height: root.iconS; radius: Theme.tileRadius
+                    color: Theme.accent; opacity: Theme.tileOpacity
                     TileGlyph {
                         anchors.centerIn: parent
                         size: 36
                         name: row.modelData.glyph
                         visible: row.modelData.glyph !== ""
-                        color: "white"
+                        color: Theme.onColor(Theme.accent)
                     }
                     Text {
                         anchors.centerIn: parent
                         visible: row.modelData.glyph === ""
                         text: row.modelData.name.charAt(0).toUpperCase()
-                        color: "white"
+                        color: Theme.onColor(Theme.accent)
                         font.family: Theme.font; font.weight: Font.Normal; font.pixelSize: 26
                     }
                 }
@@ -203,8 +204,8 @@ Item {
                     anchors { left: ico.right; leftMargin: 16; right: parent.right; rightMargin: Theme.pageMargin; verticalCenter: parent.verticalCenter }
                     text: row.modelData.name
                     elide: Text.ElideRight
-                    color: Theme.tileText
-                    font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 22
+                    color: Theme.text
+                    font.family: Theme.font; font.weight: Theme.fontLight; font.pixelSize: 22
                 }
                 MouseArea {
                     id: ama
@@ -257,6 +258,18 @@ Item {
                 onClicked: { root.pinRequested(menu.appName, menu.appGlyph); menu.shown = false }
             }
         }
+    }
+
+    // round outlined search button
+    Rectangle {
+        id: sbtn
+        anchors { right: parent.right; rightMargin: Theme.pageMargin + 4; bottom: parent.bottom; bottomMargin: 72 }
+        width: 56; height: 56; radius: 28
+        color: sma.pressed ? Theme.accent : "transparent"; border.width: 2; border.color: Theme.text
+        scale: sma.pressed ? 0.92 : 1
+        Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.pressMs } }
+        TileGlyph { anchors.centerIn: parent; size: 26; stroke: 2.4; name: "search"; color: sma.pressed ? Theme.onColor(Theme.accent) : Theme.text }
+        MouseArea { id: sma; anchors.fill: parent; onClicked: root.searchRequested() }
     }
 
     AlphaJump {

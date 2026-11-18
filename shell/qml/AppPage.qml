@@ -34,11 +34,11 @@ Item {
             width: parent.width; height: 132; color: Theme.accent
             Item {
                 x: 4; y: 44; width: 52; height: 44
-                TileGlyph { anchors.centerIn: parent; size: 24; stroke: 2.5; name: "back"; color: Theme.tileText }
+                TileGlyph { anchors.centerIn: parent; size: 24; stroke: 2.5; name: "back"; color: Theme.onColor(Theme.accent) }
                 MouseArea { anchors.fill: parent; onClicked: root.back() }
             }
             Text { anchors { left: parent.left; leftMargin: Theme.pageMargin + 4; bottom: parent.bottom; bottomMargin: 10 }
-                text: root.name.toLowerCase(); color: Theme.tileText
+                text: Theme.title(root.name); color: Theme.onColor(Theme.accent)
                 font.pixelSize: 40; font.family: Theme.font; font.weight: Theme.fontLight }
         }
 

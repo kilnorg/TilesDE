@@ -3,12 +3,19 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
+#include <QSize>
 #include "AppModel.h"
+#include "Personalise.h"
 #include "Services.h"
 
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
     app.setApplicationName("flowde-shell");
+    // personalisation store (QML singleton "Personalise"); created here so env overrides apply before the UI loads.
+    // FLOWDE_PRESET=<preset>, FLOWDE_SCHEME=dark|amoled|light override the stored values (and are saved like any change).
+    Personalise *pers = Personalise::instance();
+    if (qEnvironmentVariableIsSet("FLOWDE_PRESET")) pers->applyPreset(qEnvironmentVariable("FLOWDE_PRESET"));
+    if (qEnvironmentVariableIsSet("FLOWDE_SCHEME")) pers->setScheme(qEnvironmentVariable("FLOWDE_SCHEME"));
     Services services;
     AppModel apps;
     QQmlApplicationEngine engine;
@@ -16,7 +23,12 @@ int main(int argc, char **argv) {
     engine.rootContext()->setContextProperty("Apps", &apps);
     engine.rootContext()->setContextProperty("StartPage", qEnvironmentVariable("FLOWDE_START", "lock"));
     engine.rootContext()->setContextProperty("StartTheme", qEnvironmentVariable("FLOWDE_THEME", "Tiles"));
-    engine.rootContext()->setContextProperty("StartDark", qEnvironmentVariable("FLOWDE_SCHEME", "dark") == "dark");
+    // FLOWDE_SIZE=WxH: window size (default 540x1170, the design size). The UI scales to the window width.
+    QSize startSize(540, 1170);
+    const QStringList wh = qEnvironmentVariable("FLOWDE_SIZE").split('x');
+    if (wh.size() == 2 && wh[0].toInt() >= 100 && wh[1].toInt() >= 100) startSize = QSize(wh[0].toInt(), wh[1].toInt());
+    engine.rootContext()->setContextProperty("StartSize", startSize);
+    engine.rootContext()->setContextProperty("StartDark", pers->scheme() != "light");
     engine.loadFromModule("FlowShell", "Main");
     if (engine.rootObjects().isEmpty()) return 1;
 

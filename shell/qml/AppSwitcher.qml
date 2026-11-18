@@ -13,7 +13,7 @@ Item {
     Text {
         id: head
         anchors { top: parent.top; topMargin: 44; left: parent.left; leftMargin: Theme.pageMargin }
-        text: "running apps"; color: Theme.text
+        text: Theme.title("running apps"); color: Theme.text
         font.pixelSize: 36; font.family: Theme.font; font.weight: Theme.fontLight
     }
     Text {
@@ -38,7 +38,7 @@ Item {
             Rectangle {
                 id: card
                 anchors { fill: parent; leftMargin: 0; topMargin: 0; rightMargin: Theme.tileGap; bottomMargin: Theme.tileGap }
-                color: Theme.dark ? "#1f1f1f" : "#e4e4e4"
+                color: Theme.dark ? "#1f1f1f" : "#e4e4e4"; radius: Theme.tileRadius
                 scale: ma.pressed ? 0.96 : 1
                 Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.pressMs } }
                 Rectangle {
@@ -53,8 +53,8 @@ Item {
                 }
                 Rectangle {
                     anchors { top: bar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8 }
-                    color: Theme.accent
-                    TileGlyph { anchors.centerIn: parent; size: 56; name: String(cell.modelData).toLowerCase(); color: Theme.tileText }
+                    color: Theme.accent; radius: Theme.tileRadius; opacity: Theme.tileOpacity
+                    TileGlyph { anchors.centerIn: parent; size: 56; name: String(cell.modelData).toLowerCase(); color: Theme.onColor(Theme.accent) }
                 }
                 MouseArea { id: ma; anchors.fill: parent; onClicked: root.picked(String(cell.modelData)) }
                 MouseArea { anchors { top: parent.top; right: parent.right } width: 48; height: 44

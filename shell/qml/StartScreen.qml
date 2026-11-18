@@ -1,9 +1,14 @@
 import QtQuick
 import FlowShell
+import "TilePresets.js" as TilePresets
 
-// TilesDE Start page: scrollable 4-column tile grid packed row by row from a ListModel.
-// Edit mode (long press): tiles shrink, unpin (x) + resize buttons, drag to reorder with live reflow,
-// tap background (or exitEdit()) leaves. Turnstile in/out. Pull-down at the top is NOT handled here (Action Centre).
+// TilesDE Start page: named tile groups (Glaze style headings, collapsible) over a 3 or 4 column grid.
+// Tiles come from TilePresets.defaultTiles(); fill = Theme.tileColor(id, colorIdx) (per-tile override or palette),
+// opacity/radius/gap/columns/labels/badges/flip speed/grain all follow Theme + Personalise live.
+// Faces: TileFaces (calendar, photo, contact, missed call, weather, music, text). Picture tiles use Theme.startPhoto
+// or a generated gradient. Edit mode (long press): tiles shrink, unpin (x) + resize buttons, drag to reorder (also across
+// groups), tap a tile to open the colour sheet (12 swatches, size, photo, unpin), headings become editable.
+// Tap background / exitEdit() leaves. Pull-down at the top is NOT handled here (Action Centre).
 Item {
     id: root
 
@@ -17,20 +22,25 @@ Item {
     property bool flipsOn: true                // host can pause live flips
     readonly property bool exiting: _exiting
     property alias model: tileModel
+    readonly property string selectedId: _selId   // tile open in the colour sheet ("" = none)
     function enterEdit() {
         if (editing) return
         editing = true
         _editAt = Date.now()
     }
-    function exitEdit() { editing = false; dragIndex = -1 }
+    function exitEdit() { editing = false; dragIndex = -1; _selId = ""; refreshSel() }
     function playEnter() { _exiting = false; enterRequested() }
     function playExit() { _exiting = true; exitRequested() }
-    function unpin(i) { if (i >= 0 && i < tileModel.count) tileModel.remove(i) }
+    function indexOfId(tid) { for (let i = 0; i < tileModel.count; i++) if (tileModel.get(i).tid === tid) return i; return -1 }
+    function unpin(i) { if (i >= 0 && i < tileModel.count) { if (tileModel.get(i).tid === _selId) { _selId = ""; refreshSel() } tileModel.remove(i) } }
     // returns false when the app is already pinned
     function pinApp(name, glyph) {
         for (let i = 0; i < tileModel.count; i++) if (tileModel.get(i).name === name) return false
         const g = glyph && glyph !== "" ? glyph : (glyphs.indexOf(name.toLowerCase()) >= 0 ? name.toLowerCase() : "grid")
-        tileModel.append(mk(name, g, "medium", false, "", "", "", 0))
+        const gs = Theme.groups
+        const grp = gs && gs.length ? gs[gs.length - 1].name : ""
+        tileModel.append(mkRow({ id: name.toLowerCase().replace(/\s+/g, "-"), label: name, glyph: g, size: "medium", group: grp,
+                                 color: tileModel.count, live: false, picture: false, badge: 0 }))
         Qt.callLater(function() { root.scrollTo(Math.max(-flick.topMargin, flick.contentHeight - flick.height + flick.bottomMargin)) })
         return true
     }
@@ -46,90 +56,147 @@ Item {
         const s = tileModel.get(i).size
         tileModel.setProperty(i, "size", s === "small" ? "medium" : (s === "medium" ? "wide" : (s === "wide" ? "large" : "small")))
     }
+    function setSize(i, sz) { if (i >= 0 && i < tileModel.count && ["small", "medium", "wide", "large"].indexOf(sz) >= 0) tileModel.setProperty(i, "size", sz) }
+    // open the colour sheet for a tile id (enters edit mode first); "" closes it
+    function selectTile(tid) {
+        if (tid === "") { _selId = ""; refreshSel(); return true }
+        if (indexOfId(tid) < 0) return false
+        enterEdit()
+        _selId = tid
+        refreshSel()
+        return true
+    }
+    // socket helper: select <id> | tilesize <id>=<size> | unpintile <id> | tilepicture <id>=on|off | tilelabel <id>=<text> | closesheet
+    function command(k, v) {
+        const s = String(v), eq = s.indexOf("=")
+        const id = eq >= 0 ? s.substring(0, eq) : s, val = eq >= 0 ? s.substring(eq + 1) : ""
+        if (k === "select") return selectTile(id)
+        if (k === "closesheet") return selectTile("")
+        const i = indexOfId(id)
+        if (i < 0) return false
+        if (k === "tilesize") { if (["small", "medium", "wide", "large"].indexOf(val) < 0) return false; setSize(i, val); return true }
+        if (k === "unpintile") { unpin(i); return true }
+        if (k === "tilepicture") { tileModel.setProperty(i, "picture", val === "on" || val === "1" || val === "true"); return true }
+        if (k === "tilelabel") { tileModel.setProperty(i, "label", val); return true }
+        return false
+    }
 
     // ---- internals ----
     property bool _exiting: false
     property double _editAt: 0
+    property string _selId: ""
+    property var selRow: null                  // plain copy of the selected model row (for the sheet bindings)
     property int dragIndex: -1
     property var dragCell: null
     property point dragVp: Qt.point(0, 0)      // pointer in viewport coords
     property point dragGrab: Qt.point(0, 0)    // pointer offset from tile centre
     property double _lastMove: 0
     property var layout: []
+    property var heads: []                     // [{name, gi, y, collapsed, count}]
     property real rowsHeight: 0
+    readonly property int headH: 36
     signal enterRequested()
     signal exitRequested()
 
     readonly property var glyphs: ["phone", "message", "mail", "calendar", "clock", "photos", "music", "maps", "notes", "files", "weather",
         "terminal", "store", "camera", "settings", "people", "browser", "wallet", "noxal", "video"]
 
-    function mk(name, glyph, size, live, big, l1, l2, badge) {
-        return { name: name, label: name, glyph: glyph, size: size, live: live, big: big, line1: l1, line2: l2, badge: badge || 0 }
+    function faceFor(id) {
+        const d = new Date()
+        switch (id) {
+        case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: "Design review, 10:30" }
+        case "mail": return { face: "text", big: "3", line1: "Design review", line2: "Inbox, 3 unread" }
+        case "weather": return { face: "weather", big: "22°", line1: "Sunny", line2: "H 24°  L 16°" }
+        case "photos": return { face: "photo", big: "", line1: "Yesterday", line2: "42 new photos" }
+        case "people": return { face: "contact", big: "", line1: "Sam", line2: "Sent you a photo" }
+        case "phone": return { face: "missed", big: "2", line1: "Missed call", line2: "Sam, 09:41" }
+        case "music": return { face: "music", big: "", line1: "Slow Tide", line2: "Paper Lanterns" }
+        case "store": return { face: "text", big: "", line1: "Updates", line2: "5 apps ready" }
+        default: return { face: "text", big: "", line1: "", line2: "" }
+        }
+    }
+    // every row carries the same roles (ListModel requirement)
+    function mkRow(t) {
+        const f = faceFor(t.id)
+        return { tid: t.id, name: t.label, label: t.label, glyph: t.glyph, size: t.size, group: t.group || "", colorIdx: t.color | 0,
+                 live: !!t.live, picture: !!t.picture, badge: t.badge | 0, face: f.face, big: f.big, line1: f.line1, line2: f.line2 }
+    }
+
+    function refreshSel() {
+        const i = _selId === "" ? -1 : indexOfId(_selId)
+        if (i < 0) { selRow = null; if (_selId !== "") _selId = ""; return }
+        const r = tileModel.get(i)
+        selRow = { index: i, tid: r.tid, label: r.label, size: r.size, picture: r.picture, group: r.group }
     }
 
     ListModel { id: tileModel }
 
     Component.onCompleted: {
-        const d = new Date()
-        const t = [
-            mk("Phone", "phone", "small", false, "", "", "", 2),
-            mk("Messages", "message", "small", false, "", "", "", 4),
-            mk("Camera", "camera", "small", false, "", "", "", 0),
-            mk("Music", "music", "small", false, "", "", "", 0),
-            mk("Calendar", "calendar", "medium", true, Qt.formatDate(d, "d"), Qt.formatDate(d, "dddd"), "Design review, 10:30"),
-            mk("Mail", "mail", "medium", true, "3", "Design review", "Inbox, 3 unread"),
-            mk("Weather", "weather", "wide", true, "22\u00b0", "Sunny", "H 24\u00b0  L 16\u00b0"),
-            mk("Photos", "photos", "medium", true, "", "Yesterday", "42 new photos"),
-            mk("Settings", "settings", "small", false, "", "", "", 0),
-            mk("Maps", "maps", "small", false, "", "", "", 0),
-            mk("Notes", "notes", "small", false, "", "", "", 0),
-            mk("Clock", "clock", "small", false, "", "", "", 0),
-            mk("People", "people", "medium", true, "", "Sam", "Sent you a photo"),
-            mk("Files", "files", "small", false, "", "", "", 0),
-            mk("Browser", "browser", "small", false, "", "", "", 0),
-            mk("Wallet", "wallet", "small", false, "", "", "", 0),
-            mk("Terminal", "terminal", "small", false, "", "", "", 0),
-            mk("Store", "store", "medium", true, "", "Updates", "5 apps ready"),
-            mk("Noxal", "noxal", "small", false, "", "", "", 0)
-        ]
-        for (let i = 0; i < t.length; i++) tileModel.append(t[i])
+        const t = TilePresets.defaultTiles()
+        for (let i = 0; i < t.length; i++) tileModel.append(mkRow(t[i]))
         computeLayout()
     }
 
     function cellsOf(sz) {
-        return sz === "small" ? [1, 1] : (sz === "medium" ? [2, 2] : (sz === "wide" ? [4, 2] : [4, 4]))
+        const c = Theme.tileCols
+        return sz === "small" ? [1, 1] : (sz === "medium" ? [2, 2] : (sz === "wide" ? [c, 2] : [c, c]))
     }
-    // first-fit packing on a 4-column occupancy grid
+    // first-fit packing per group on a Theme.tileCols occupancy grid; group headings between sections
     function computeLayout() {
         if (width <= 0) return
-        const u = Theme.tileUnit(width), g = Theme.tileGap, m = Theme.pageMargin
-        const occ = []
-        function free(r, c, cw, ch) {
-            for (let rr = r; rr < r + ch; rr++)
-                for (let cc = c; cc < c + cw; cc++) if (occ[rr] && occ[rr][cc]) return false
-            return true
-        }
-        const out = []
-        let rows = 0
+        const cols = Theme.tileCols, u = Theme.tileUnit(width), g = Theme.tileGap, m = Theme.pageMargin
+        const gs = Theme.groups || []
+        const names = [""]
+        for (let s = 0; s < gs.length; s++) names.push(gs[s].name)
+        const buckets = []
+        for (let s = 0; s < names.length; s++) buckets.push([])
         for (let i = 0; i < tileModel.count; i++) {
-            const sz = tileModel.get(i).size
-            const cs = cellsOf(sz), cw = cs[0], ch = cs[1]
-            let done = false
-            for (let r = 0; !done; r++) {
-                for (let c = 0; c <= 4 - cw && !done; c++) {
-                    if (!free(r, c, cw, ch)) continue
-                    for (let rr = r; rr < r + ch; rr++) {
-                        if (!occ[rr]) occ[rr] = [false, false, false, false]
-                        for (let cc = c; cc < c + cw; cc++) occ[rr][cc] = true
+            let k = names.indexOf(tileModel.get(i).group)
+            if (k < 0) k = 0
+            buckets[k].push(i)
+        }
+        const out = new Array(tileModel.count), hd = []
+        let y = 0
+        for (let s = 0; s < names.length; s++) {
+            const collapsed = s > 0 && !!gs[s - 1].collapsed
+            if (s > 0) {
+                if (y > 0) y += 12
+                hd.push({ name: names[s], gi: s - 1, y: y, collapsed: collapsed, count: buckets[s].length })
+                y += headH + 2
+            }
+            const occ = []
+            function free(r, c, cw, ch) {
+                for (let rr = r; rr < r + ch; rr++)
+                    for (let cc = c; cc < c + cw; cc++) if (occ[rr] && occ[rr][cc]) return false
+                return true
+            }
+            let rows = 0
+            const list = buckets[s]
+            for (let n = 0; n < list.length; n++) {
+                const i = list[n], sz = tileModel.get(i).size
+                const cs = cellsOf(sz), cw = cs[0], ch = cs[1]
+                let done = false
+                for (let r = 0; !done; r++) {
+                    for (let c = 0; c <= cols - cw && !done; c++) {
+                        if (!free(r, c, cw, ch)) continue
+                        for (let rr = r; rr < r + ch; rr++) {
+                            if (!occ[rr]) { occ[rr] = []; for (let q = 0; q < cols; q++) occ[rr].push(false) }
+                            for (let cc = c; cc < c + cw; cc++) occ[rr][cc] = true
+                        }
+                        const ty = y + r * (u + g)
+                        out[i] = { x: m + c * (u + g), y: ty, w: Theme.tileW(sz, width), h: Theme.tileH(sz, width),
+                                   row: Math.round(ty / (u + g)), col: c, hidden: collapsed, sec: s }
+                        rows = Math.max(rows, r + ch)
+                        done = true
                     }
-                    out.push({ x: m + c * (u + g), y: r * (u + g), w: Theme.tileW(sz, width), h: Theme.tileH(sz, width), row: r, col: c })
-                    rows = Math.max(rows, r + ch)
-                    done = true
                 }
             }
+            if (!collapsed) y += rows * (u + g)
         }
-        rowsHeight = rows * (u + g)
+        rowsHeight = y
+        heads = hd
         layout = out
+        refreshSel()
     }
     onWidthChanged: computeLayout()
     Connections {
@@ -138,6 +205,17 @@ Item {
         function onRowsRemoved() { root.computeLayout() }
         function onRowsMoved() { root.computeLayout() }
         function onDataChanged() { root.computeLayout() }
+    }
+    Connections {
+        target: Theme
+        function onTileColsChanged() { root.computeLayout() }
+        function onTileGapChanged() { root.computeLayout() }
+        function onGroupsChanged() { root.computeLayout() }
+    }
+
+    function renameGroup(gi, oldName, newName) {
+        Personalise.renameGroup(gi, newName)
+        for (let i = 0; i < tileModel.count; i++) if (tileModel.get(i).group === oldName) tileModel.setProperty(i, "group", newName)
     }
 
     function updateDrag() {
@@ -152,12 +230,22 @@ Item {
         for (let j = 0; j < root.layout.length; j++) {
             if (j === root.dragIndex) continue
             const lay = root.layout[j]
+            if (!lay || lay.hidden) continue
             if (cx > lay.x + lay.w * 0.2 && cx < lay.x + lay.w * 0.8 && cy > lay.y + lay.h * 0.2 && cy < lay.y + lay.h * 0.8) {
                 const from = root.dragIndex
+                tileModel.setProperty(from, "group", tileModel.get(j).group)
                 tileModel.move(from, j, 1)
                 root.dragIndex = j
                 root._lastMove = now
-                break
+                return
+            }
+        }
+        // dropped on a group heading: join that group (top block when above the first heading)
+        for (let h = 0; h < root.heads.length; h++) {
+            const hd = root.heads[h]
+            if (cy > hd.y && cy < hd.y + root.headH) {
+                if (tileModel.get(root.dragIndex).group !== hd.name) { tileModel.setProperty(root.dragIndex, "group", hd.name); root._lastMove = now }
+                return
             }
         }
     }
@@ -177,13 +265,47 @@ Item {
         }
     }
 
+    // ---- background: page colour, optional wallpaper (tiles over wallpaper), procedural paper grain ----
     Rectangle { anchors.fill: parent; color: Theme.pageBg }
+    Item {
+        anchors.fill: parent
+        visible: Theme.tilesOverWallpaper
+        TileFaces { anchors.fill: parent; face: "scene"; seed: 7 }
+        Rectangle { anchors.fill: parent; color: "#000000"; opacity: 0.45 }
+    }
+    Canvas {
+        id: grainCv
+        anchors.fill: parent
+        visible: Theme.grain > 0.01
+        opacity: Math.min(1, Theme.grain) * 0.55
+        property bool lightBg: !Theme.dark
+        onLightBgChanged: requestPaint()
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            if (width < 2 || height < 2) return
+            const n = Math.round(width * height * 0.012)
+            let s = 12345
+            for (let i = 0; i < n; i++) {
+                s = (s * 1103515245 + 12345) & 0x7fffffff
+                const x = s % Math.floor(width)
+                s = (s * 1103515245 + 12345) & 0x7fffffff
+                const y = s % Math.floor(height)
+                s = (s * 1103515245 + 12345) & 0x7fffffff
+                const a = 0.15 + (s % 100) / 100 * 0.55
+                ctx.fillStyle = (s & 1024) ? "rgba(255,255,255," + a.toFixed(2) + ")" : "rgba(0,0,0," + a.toFixed(2) + ")"
+                ctx.fillRect(x, y, 1, 1)
+            }
+        }
+    }
 
     Flickable {
         id: flick
         anchors.fill: parent
         topMargin: root.topInset + 2
-        bottomMargin: root.bottomInset
+        bottomMargin: root.bottomInset + (root.selRow ? sheet.height : 0)
         contentWidth: width
         contentHeight: content.height
         interactive: root.dragIndex < 0
@@ -196,7 +318,7 @@ Item {
         Item {
             id: content
             width: flick.width
-            height: root.rowsHeight + 8 + 64
+            height: root.rowsHeight + 8 + 64 + (root.editing ? 48 : 0)
 
             // background tap leaves edit mode
             MouseArea {
@@ -204,22 +326,49 @@ Item {
                 onClicked: if (root.editing) root.exitEdit()
             }
 
+            // group headings
+            Repeater {
+                model: root.heads
+                delegate: TileGroupHeader {
+                    required property var modelData
+                    x: Theme.pageMargin; y: modelData.y
+                    width: content.width - 2 * Theme.pageMargin
+                    height: root.headH
+                    text: modelData.name
+                    collapsed: modelData.collapsed
+                    count: modelData.count
+                    editing: root.editing
+                    opacity: Math.max(0, 1 - root.pagerP * 2)
+                    visible: opacity > 0.01
+                    onToggled: Personalise.toggleGroup(modelData.gi)
+                    onRenamed: (n) => root.renameGroup(modelData.gi, modelData.name, n)
+                    onRemoveRequested: Personalise.removeGroup(modelData.gi)
+                }
+            }
+
             Repeater {
                 model: tileModel
                 delegate: Item {
                     id: cell
                     required property int index
+                    required property string tid
                     required property string name
                     required property string label
                     required property string glyph
                     required property string size
+                    required property string group
+                    required property int colorIdx
                     required property bool live
+                    required property bool picture
+                    required property int badge
+                    required property string face
                     required property string big
                     required property string line1
                     required property string line2
-                    required property int badge
 
                     readonly property var lay: (root.layout.length > index) ? root.layout[index] : null
+                    readonly property color fillC: Theme.tileColor(cell.tid, cell.colorIdx)
+                    readonly property bool liveOn: cell.live || ((cell.face === "missed" || cell.face === "music") && cell.size !== "small")
                     property bool dragging: false
                     property real dragX: 0
                     property real dragY: 0
@@ -261,7 +410,7 @@ Item {
                     y: dragging ? dragY : (lay ? lay.y : 0)
                     width: lay ? lay.w : 0
                     height: lay ? lay.h : 0
-                    visible: lay !== null && Math.abs(turn) < 89.5
+                    visible: lay !== null && !lay.hidden && Math.abs(turn) < 89.5
                     z: dragging ? 10 : 0
                     transformOrigin: Item.Center
                     scale: root.editing ? (dragging ? 1.04 : 0.88) : 1
@@ -310,11 +459,14 @@ Item {
                         size: cell.size
                         label: cell.label
                         glyph: cell.glyph
-                        live: cell.live
+                        live: cell.liveOn
+                        accent: cell.fillC
+                        picture: cell.picture
                         index: cell.index
                         screenW: root.width
                         flat: root.editing
                         flipEnabled: root.flipsOn && !root.editing && !root._exiting && cell.enterP >= 1
+                        glyphScale: (cell.face === "photo" || cell.face === "contact") && cell.picture ? 0.8 : 1
                         onClicked: (r) => {
                             if (root.editing || Date.now() - root._editAt < 400) return
                             root.launched(cell.name, r, false)
@@ -328,25 +480,46 @@ Item {
                             root.enterEdit()
                         }
 
+                        // picture layer (photo tiles): generated gradient or Theme.startPhoto under the glyph
+                        frontLayer: [
+                            Loader {
+                                anchors.fill: parent
+                                active: cell.picture
+                                sourceComponent: TileFaces { face: "scene"; seed: root.hashOf(cell.tid) }
+                            }
+                        ]
+
                         // live back face
                         Loader {
                             anchors.fill: parent
-                            active: cell.live
-                            sourceComponent: backComp
+                            active: cell.liveOn
+                            sourceComponent: TileFaces {
+                                face: cell.face; size: cell.size; big: cell.big; line1: cell.line1; line2: cell.line2
+                                ink: tile.ink; seed: root.hashOf(cell.tid) + 1
+                                animate: tile.showingBack
+                            }
                         }
                     }
 
-                    // numeric badge (front face only)
-                    Text {
-                        visible: cell.badge > 0 && !root.editing && tile.flipAngle === 0
-                        anchors { right: parent.right; top: parent.top; rightMargin: 9; topMargin: 4 }
-                        text: cell.badge
-                        color: Theme.tileText
-                        font.family: Theme.font; font.weight: Font.Light
-                        font.pixelSize: cell.size === "small" ? 26 : 34
+                    // selected in edit mode: outline
+                    Rectangle {
+                        visible: root.editing && root._selId === cell.tid
+                        anchors.fill: parent; anchors.margins: -3
+                        color: "transparent"; border.width: 3; border.color: Theme.text
+                        radius: Theme.tileRadius > 0 ? Theme.tileRadius + 3 : 0
                     }
 
-                    // edit mode: drag surface
+                    // numeric badge (front face only), big WP8 style
+                    Text {
+                        visible: Theme.showBadges && cell.badge > 0 && !root.editing && !tile.showingBack
+                        anchors { right: parent.right; top: parent.top; rightMargin: 9; topMargin: 2 }
+                        text: cell.badge
+                        color: tile.ink
+                        font.family: Theme.font; font.weight: Theme.fontLight
+                        font.pixelSize: cell.size === "small" ? Math.round(cell.width * 0.34) : 46
+                    }
+
+                    // edit mode: drag surface; a plain tap selects the tile for the colour sheet
                     MouseArea {
                         id: dragMa
                         anchors.fill: parent
@@ -356,7 +529,7 @@ Item {
                         preventStealing: true
                         onPressed: (m) => { cell.dMoved = false; cell.dPress = Qt.point(m.x, m.y) }
                         onPositionChanged: (m) => { if (pressed) cell.dragStep(m.x, m.y, dragMa) }
-                        onReleased: cell.dragFinish()
+                        onReleased: { const moved = cell.dMoved; cell.dragFinish(); if (!moved && !cell.held) root.selectTile(cell.tid === root._selId ? "" : cell.tid) }
                         onCanceled: cell.dragFinish()
                     }
 
@@ -372,7 +545,7 @@ Item {
                         TileGlyph { anchors.centerIn: parent; size: Math.round(parent.d * 0.55); name: "close"; color: "#111111"; stroke: 2.4 }
                         MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: root.unpin(cell.index) }
                     }
-                    // edit mode: resize toggle (small -> medium -> wide -> small)
+                    // edit mode: resize toggle (small -> medium -> wide -> large -> small)
                     Rectangle {
                         id: sizeBtn
                         visible: root.editing && !cell.dragging
@@ -397,28 +570,18 @@ Item {
                         }
                         MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: root.resize(cell.index) }
                     }
-
-                    // live back-face content
-                    Component {
-                        id: backComp
-                        Item {
-                            Text {
-                                visible: cell.big !== ""
-                                anchors { left: parent.left; top: parent.top; leftMargin: 10; topMargin: cell.size === "large" ? 12 : 4 }
-                                text: cell.big
-                                color: Theme.tileText
-                                font.family: Theme.font; font.weight: Font.Light
-                                font.pixelSize: cell.size === "large" ? 120 : (cell.size === "small" ? 40 : 76)
-                            }
-                            Column {
-                                anchors { left: parent.left; bottom: parent.bottom; right: parent.right; leftMargin: 10; rightMargin: 10; bottomMargin: 8 }
-                                spacing: 1
-                                Text { width: parent.width; text: cell.line1; elide: Text.ElideRight; color: Theme.tileText; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.Normal; visible: text !== "" }
-                                Text { width: parent.width; text: cell.line2; elide: Text.ElideRight; color: Theme.tileText; opacity: 0.85; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.Light; visible: text !== "" }
-                            }
-                        }
-                    }
                 }
+            }
+
+            // edit mode: add an empty group
+            Item {
+                visible: root.editing
+                x: Theme.pageMargin; y: root.rowsHeight + 12
+                width: addTxt.width + 28; height: 36
+                Rectangle { anchors.fill: parent; color: "transparent"; border.width: 2; border.color: Theme.textDim }
+                Text { id: addTxt; anchors.centerIn: parent; text: Theme.title("new group"); color: Theme.text
+                    font.family: Theme.font; font.pixelSize: 17; font.weight: Theme.fontLight }
+                MouseArea { anchors.fill: parent; onClicked: Personalise.addGroup("New group") }
             }
 
             // "all apps" arrow: footer row below the last tile
@@ -431,13 +594,15 @@ Item {
                 Behavior on opacity { enabled: !Theme.reduceMotion; NumberAnimation { duration: 150 } }
                 scale: arrowMa.pressed ? 0.92 : 1
                 Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.pressMs } }
-                Rectangle { anchors.fill: parent; radius: 24; color: "transparent"; border.width: 2; border.color: Theme.tileText }
+                Rectangle { anchors.fill: parent; radius: 24; color: "transparent"; border.width: 2; border.color: Theme.text }
                 Canvas {
                     anchors.fill: parent
+                    property color ink: Theme.text
+                    onInkChanged: requestPaint()
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.clearRect(0, 0, width, height)
-                        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"
+                        ctx.strokeStyle = ink; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"
                         ctx.beginPath()
                         ctx.moveTo(width * 0.30, height * 0.5); ctx.lineTo(width * 0.70, height * 0.5)
                         ctx.moveTo(width * 0.52, height * 0.30); ctx.lineTo(width * 0.72, height * 0.5); ctx.lineTo(width * 0.52, height * 0.70)
@@ -445,6 +610,90 @@ Item {
                     }
                 }
                 MouseArea { id: arrowMa; anchors.fill: parent; anchors.margins: -8; onClicked: root.appsRequested() }
+            }
+        }
+    }
+
+    function hashOf(s) { let h = 7; s = String(s); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h) }
+
+    // ---- edit-mode colour sheet: 12 swatches, size, photo, unpin ----
+    component SheetBtn: Rectangle {
+        id: sb
+        property string text: ""
+        property bool on: false
+        signal tapped()
+        implicitWidth: lbl.width + 28; implicitHeight: 40
+        color: on ? Theme.text : "transparent"
+        border.width: 2; border.color: Theme.text
+        Text { id: lbl; anchors.centerIn: parent; text: sb.text; color: sb.on ? Theme.pageBg : Theme.text
+            font.family: Theme.font; font.pixelSize: 16; font.weight: Font.Normal }
+        MouseArea { anchors.fill: parent; onClicked: sb.tapped() }
+    }
+
+    Rectangle {
+        id: sheet
+        readonly property bool open: root.editing && root.selRow !== null
+        width: parent.width
+        height: sheetCol.height + 28
+        y: open ? parent.height - root.bottomInset - height : parent.height
+        visible: y < parent.height
+        z: 20
+        color: Theme.c.card
+        Behavior on y { enabled: !Theme.reduceMotion; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        MouseArea { anchors.fill: parent }   // swallow taps
+
+        Column {
+            id: sheetCol
+            x: 16; y: 14
+            width: parent.width - 32
+            spacing: 12
+            Item {
+                width: parent.width; height: 30
+                Text { anchors.verticalCenter: parent.verticalCenter; text: root.selRow ? Theme.title(root.selRow.label) : ""
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Theme.fontLight }
+                Text { anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: Theme.title("done")
+                    color: Theme.accent; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.Normal
+                    MouseArea { anchors.fill: parent; anchors.margins: -10; onClicked: root.selectTile("") } }
+            }
+            // 12 swatches (+ auto = clear override)
+            Grid {
+                id: swGrid
+                columns: 7; spacing: 8
+                readonly property real sw: Math.floor((sheetCol.width - 6 * 8) / 7)
+                Repeater {
+                    model: Personalise.accentColours
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: swGrid.sw; height: swGrid.sw
+                        color: modelData
+                        border.width: Theme.hasTileColor(root._selId) && Qt.color(Personalise.tileColors[root._selId]).toString() === Qt.color(modelData).toString() ? 3 : 0
+                        border.color: Theme.text
+                        MouseArea { anchors.fill: parent; onClicked: Personalise.setTileColor(root._selId, Qt.color(parent.modelData).toString()) }
+                    }
+                }
+                Rectangle {
+                    width: swGrid.sw; height: swGrid.sw
+                    color: "transparent"; border.width: 2; border.color: Theme.textDim
+                    Text { anchors.centerIn: parent; text: Theme.title("auto"); color: Theme.text; font.family: Theme.font; font.pixelSize: 13 }
+                    MouseArea { anchors.fill: parent; onClicked: Personalise.setTileColor(root._selId, "") }
+                }
+            }
+            Row {
+                spacing: 8
+                Repeater {
+                    model: ["small", "medium", "wide", "large"]
+                    delegate: SheetBtn {
+                        required property string modelData
+                        text: Theme.title(modelData === "small" ? "s" : modelData === "medium" ? "m" : modelData === "wide" ? "w" : "l")
+                        on: root.selRow !== null && root.selRow.size === modelData
+                        onTapped: root.setSize(root.indexOfId(root._selId), modelData)
+                    }
+                }
+                SheetBtn {
+                    text: Theme.title("photo"); on: root.selRow !== null && root.selRow.picture
+                    onTapped: { const i = root.indexOfId(root._selId); if (i >= 0) tileModel.setProperty(i, "picture", !tileModel.get(i).picture) }
+                }
+                SheetBtn { text: Theme.title("unpin"); onTapped: root.unpin(root.indexOfId(root._selId)) }
             }
         }
     }

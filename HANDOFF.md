@@ -277,6 +277,62 @@ Customizability and theming requirements (implement as real settings, persisted,
 - Motion: global intensity (off / low / normal / high) like Glaze's `[motion] intensity`.
 - Settings page "personalisation" with a live preview, plus control-socket commands (`set theme`, `set accent`, `set scheme`, `set amoled`, `set gap`, `set radius`, `set opacity`, `set preset`) so the screenshot tools and tests can drive it. Persist in a single file (JSON or TOML, for example `~/.config/tilesde/theme.json`) with a documented schema in `docs/tiles-spec.md`.
 
+### W2-M1 Personalisation engine
+
+**Goal of this milestone.** Give TilesDE a persisted personalisation engine: colour schemes and presets, accent, tile layout options and tile groups, held in one C++ singleton that QML reads and writes live, plus a default tile layout module.
+
+**What was done.** `Personalise` is a C++ QML singleton (module FlowShell) in `shell/src/Personalise.h` and `shell/src/Personalise.cpp`. It keeps the earlier partial work and that work was verified. `shell/qml/Theme.qml` is bound to it. A new `shell/qml/TilePresets.js` holds the default layout (tiles and groups). `shell/src/main.cpp` registers the singleton. `shell/CMakeLists.txt` now adds the src include directory and `TilePresets.js`. `shell/tools/check-config.sh` was updated. The Personalisation section of `docs/tiles-spec.md` was updated to match. Fixes made along the way: `Theme.qml` needed `import FlowShell` (Personalise was undefined at runtime), and the CMake include and JS file were missing.
+
+Public API, for the integrator: in `Main.qml` `onCommand`, any key not handled elsewhere goes to `Personalise.command(k, String(v))`, which returns a bool. Keys include preset, scheme (dark, amoled or light), amoled, accent, opacity, radius, gap, columns, wallpaper, grain, labels, badges, flip, weight, case, motion, photo, groups, tile colours, custom presets, save, load and delete preset, reset, reload and flush. Built-in presets are glaze, classic, mono and paper; the light preset is named "paper", and `scheme=light` works with any preset. New QML types: `Personalise` (C++ singleton) and `TilePresets.js` (imported as `TilePresets`, with defaultTiles, previewTiles, find, colorIndex, tilesInGroup and defaultGroups). Existing `Theme` API is unchanged.
+
+**Verified.** The local macOS build against Qt 6.11 passes, run in a scratch directory on the Mac, not in the VM. An offscreen run is clean: a corrupt settings file falls back to defaults and is copied to a `.bad` file, and `FLOWDE_PRESET` and `FLOWDE_SCHEME` are applied and saved. `qmllint` is clean.
+
+**Not verified.** The VM build and the real display were not tested, and nothing was run with touch or screenshots for this milestone. `check-config.sh` cannot pass yet because `Main.qml` is not wired to the control socket. Nothing is committed.
+
+**Next steps.** The integrator wires `Main.qml` onCommand to `Personalise.command`, then `check-config.sh` can pass. Switch `StartScreen` from its own tile list to `TilePresets.defaultTiles()`. Run the VM build and screenshot the presets, then commit locally as Mandrusia with no trailers. Leave the untracked `shell/assets/.DS_Store` out of the commit.
+
+### W2-M2 Controls and screens written
+
+**Goal of this milestone.** Write the Tiles-style control kit (pivot, toggle, dropdown, button, text field, list row, slider, colour grid, section header, app bar) and the screens built from it: the Settings app, a rewritten Start screen with groups and tile faces, Tiles-styled chrome, and a ControlsGallery test page. Settings and the controls are meant to follow the owner's Windows-Phone-style references.
+
+**What was done.**
+- Controls: `Pivot.qml`, `PivotPage.qml`, `MetroToggle.qml`, `MetroDropdown.qml`, `MetroButton.qml`, `MetroTextField.qml`, `MetroListRow.qml`, `MetroSlider.qml`, `MetroColorGrid.qml`, `MetroSectionHeader.qml`, `AppBar.qml`, `ControlsGallery.qml` under `shell/qml/`. Spec "Controls" section added to `docs/tiles-spec.md`.
+- Settings app: `SettingsApp.qml`, `SettingsHome.qml` and `settings/` (`SettingsStartTheme`, `SettingsLockPage`, `SettingsAppPage`, `SettingsTilePreview`, `SettingsGroupManager`). Public API: `SettingsApp.open(name)`, `back()`, `goHome()`, signal `closed()`.
+- Settings pages 2: `shell/qml/settings2/` holds Display, Notifications, Battery, Network, About, Sound, Email, Devices and `index.js`.
+- Start screen: `StartScreen.qml`, `MetroTile.qml`, `HomeScreen.qml`, new `TileFaces.qml` and `TileGroupHeader.qml`. Named collapsible groups, 12-swatch edit colour sheet, picture tiles, seven tile faces, WP8-style badges, procedural grain. Reads Theme and Personalise live.
+- Chrome polish: `StatusBar.qml`, `NavBar.qml`, `LockScreen.qml`, `Shade.qml`, `AllApps.qml`, `AlphaJump.qml`, `AppSwitcher.qml`, `AppPage.qml` restyled to Tiles colours and theme tokens. Shade gained `openSettings()`, AllApps gained `searchRequested()`.
+
+**Verified.**
+- Settings app (`SettingsApp.qml` and the start+theme page): compiled and run in a scratch macOS build (a scratch copy of the shell with these files added to CMake, not the VM). No QML warnings. Screenshots checked for home pivot, start+theme, lock screen and the tile preview.
+- `qmllint` clean (module import warnings only) for Start, chrome and the controls where it was run. No syntax errors reported.
+
+**Not verified.**
+- No controls file was compiled or linted; `qmllint` hung on `find`, so the controls and `settings2/` are unchecked. Expect minor fixes on first build.
+- Not run in the VM. No touch input. No pixel comparison with the references.
+- Settings: sliders and the group manager on start+theme were not scrolled to or exercised. Only the top of that page was verified.
+- Start, chrome and `settings2/` have no screenshots.
+- Nothing committed, nothing pushed. `Main.qml` and `CMakeLists.txt` untouched in the Settings work.
+
+**Caveats for the integrator.**
+- Add all 12 control files, the 7 Settings files, `TileFaces.qml`, `TileGroupHeader.qml` and the `settings2/` files to `QML_FILES` in `shell/CMakeLists.txt`. `settings2/` files import only FlowShell; add `import ".."` if resolution fails.
+- `AppPage.qml` still has the old built-in Settings component. Route the Settings tile to `SettingsApp`.
+- Socket wiring: `screen=settings` shows SettingsApp; `settings=<name>` calls `SettingsApp.open(name)`; `settings=back` calls `back()`. Start keys `select`, `closesheet`, `tilesize`, `unpintile`, `tilepicture`, `tilelabel` go to `home.start.command(k, v)`. Wire `Shade.onOpenSettings` and `AllApps.onSearchRequested` in `Main.qml`.
+- `Main.qml` still passes ink "white" to StatusBar, which is wrong on a light page. LockScreen keeps white ink, so a light scheme is unchecked.
+- `MetroDropdown` sheet parents to `Window.contentItem` and needs a live window. `Pivot` does not loop pages. Pivot title spacing is 28 px. Page titles come from `PivotPage.title`, read once at completion.
+- Lock-screen choices live only in page state; not persisted. "Choose photo" opens a path text field, not a file picker. `MetroToggle` stacks label, value and track; the lock-screen reference puts the track on the right, so it differs.
+- Settings services setters write properties only; no `Services.send()` to the compositor yet. Battery usage, paired devices and email accounts are mock data. Battery saver, data and ringtone options are local and not persisted.
+- Tile edits (order, size, unpin, group moves) are not persisted. Only group list and tile colours persist via Personalise. Picture tiles are square-cornered when radius > 0. Grain is a static Canvas painted once.
+- Shade logs polish-loop warnings offscreen; not from these files.
+- Notification glyph names come from app name, so unknown apps show TileGlyph's fallback.
+
+**Next steps.**
+1. Add the files above to `QML_FILES`; wire `Main.qml` onCommand and the Shade and AllApps signals.
+2. Run `qmllint` on the controls and `settings2/`, then the VM build, and fix errors.
+3. Screenshot the controls gallery, Settings (all pages, not only the top), Start, and chrome in dark and light.
+4. Check the lock-screen toggle layout against the reference; fix the StatusBar ink.
+5. Commit locally as Mandrusia with no trailers.
+
+
 ## Project 2: Glaze desktop (paused; agents died on a rate limit)
 
 State: tty1 is still Sway. The Glaze compositor runs on tty2 for tests only. Last measured (VM, software GL, 4 vCPUs): open/close p95 about 10 ms, but the 5-minute soak (`~/fedeos/glaze/scripts/vm/m4-soak.sh 5 1280x800`) showed many 5-second windows at 1-7 fps (p95 100 ms to 2.4 s). Likely cause: the new snapshot morph (maximise/snap/tiling) and workspace slides. The compositor stayed alive for the whole soak with no panics. Do NOT switch tty1 to Glaze until a soak is smooth; the switch script is `scripts/vm/make-glaze-default.sh`, rollback `make-glaze-default.sh --rollback` or `echo sway > ~/.config/glaze/session-backend`.

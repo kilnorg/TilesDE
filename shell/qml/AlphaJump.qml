@@ -15,7 +15,7 @@ Item {
     opacity: open ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Theme.reduceMotion ? 0 : 160 } }
 
-    Rectangle { anchors.fill: parent; color: "#F2000000" }
+    Rectangle { anchors.fill: parent; color: Qt.rgba(Theme.pageBg.r, Theme.pageBg.g, Theme.pageBg.b, 0.95) }
     MouseArea { anchors.fill: parent; onClicked: root.closed() }
 
     Grid {
@@ -35,14 +35,17 @@ Item {
                 required property int index
                 readonly property bool has: root.available[modelData] === true
                 width: grid.cell; height: grid.cell
-                color: has ? (ma.pressed ? Qt.darker(Theme.accent, 1.25) : Theme.accent) : "#2A2A2A"
+                radius: Theme.tileRadius
+                color: has ? (ma.pressed ? Theme.accent : "transparent") : "transparent"
+                border.width: has ? 2 : 1; border.color: has ? Theme.accent : Theme.textDim
+                opacity: has ? 1 : 0.35
                 scale: ma.pressed ? 0.94 : 1
                 Behavior on scale { NumberAnimation { duration: Theme.reduceMotion ? 0 : 90 } }
                 Text {
                     anchors { left: parent.left; bottom: parent.bottom; leftMargin: 8; bottomMargin: 4 }
                     text: cell.modelData
-                    color: cell.has ? "white" : "#6A6A6A"
-                    font.family: "Inter"; font.weight: Font.Light; font.pixelSize: 40
+                    color: cell.has ? (ma.pressed ? Theme.onColor(Theme.accent) : Theme.accent) : Theme.textDim
+                    font.family: "Inter"; font.weight: Theme.fontLight; font.pixelSize: 40
                 }
                 MouseArea {
                     id: ma

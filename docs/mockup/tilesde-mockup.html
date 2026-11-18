@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TilesDE mockup</title>
+<style>
+:root{
+  --bg:#000; --ink:#22211f; --paper:#d8d6cf; --accent:#D97757; --txt:#fff; --dim:#8a8a86;
+  --gap:6px; --u:79px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#161513;color:#eee;font-family:Inter,"Helvetica Neue",Arial,sans-serif;padding:28px 16px 48px}
+h1{font-weight:300;font-size:30px;text-align:center}
+.sub{color:#9a9890;text-align:center;font-size:14px;margin:6px 0 28px}
+.row{display:flex;flex-wrap:wrap;gap:28px;justify-content:center}
+.cap{text-align:center;font-size:13px;color:#a8a69e;margin-top:10px;letter-spacing:.04em}
+.phone{width:360px;height:720px;background:var(--bg);border:2px solid #2d2c29;border-radius:26px;position:relative;overflow:hidden;box-shadow:0 20px 50px #0008}
+.status{height:26px;display:flex;justify-content:space-between;align-items:center;padding:0 12px;font-size:12px;color:#fff}
+.status .r{display:flex;gap:8px;align-items:center}
+.bat{width:22px;height:10px;border:1.5px solid #fff;position:relative}.bat i{position:absolute;inset:1.5px;right:5px;background:#fff}
+.nav{position:absolute;left:0;right:0;bottom:0;height:52px;background:#000;display:flex;justify-content:space-around;align-items:center}
+.nav svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:1.6}
+.body{position:absolute;top:26px;bottom:52px;left:0;right:0;overflow:hidden}
+/* start */
+.start{padding:6px 12px;background:
+  radial-gradient(circle at 20% 10%,#1d1c1a,transparent 60%),#0b0b0a}
+.gh{font-size:15px;font-weight:300;color:#e9e7e0;margin:10px 0 6px 2px}
+.grid{display:grid;grid-template-columns:repeat(4,var(--u));grid-auto-rows:var(--u);gap:var(--gap)}
+.t{position:relative;color:#fff;padding:7px 8px;font-size:12px;display:flex;align-items:flex-end;overflow:hidden}
+.t.c{background:var(--accent)}.t.k{background:var(--ink)}.t.p{background:var(--paper);color:#22211f}
+.t svg{position:absolute;left:50%;top:50%;transform:translate(-50%,-58%);width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.t.m svg{width:46px;height:46px}.t.s svg{width:30px;height:30px;transform:translate(-50%,-50%)}
+.t .n{position:absolute;right:8px;top:6px;font-size:26px;font-weight:300}
+.m{grid-column:span 2;grid-row:span 2}.w{grid-column:span 4;grid-row:span 2}
+.t.s .lab{display:none}
+.pic{background:linear-gradient(135deg,#3b2f2a,#b4533a 55%,#e9a77f)}
+.w .face{position:absolute;left:12px;top:10px;right:12px;font-size:13px;line-height:1.35;color:inherit}
+.w .face b{display:block;font-size:17px;font-weight:400}
+.w .date{position:absolute;right:12px;bottom:8px;font-size:40px;font-weight:300}
+/* pivot */
+.cp{padding:0 18px}
+.cap1{font-size:13px;font-weight:600;letter-spacing:.02em;margin:10px 0 0}
+.big{font-size:56px;font-weight:200;line-height:1.05;white-space:nowrap;letter-spacing:-.01em}
+.big span{color:#4a4a48}
+.lbl{font-size:13px;color:#b8b6ae;margin:18px 0 6px}
+.sel{border:2px solid #fff;height:40px;padding:0 10px;display:flex;align-items:center;gap:10px;font-size:19px}
+.sw{display:inline-block;width:14px;height:14px;background:var(--accent)}
+.tog{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
+.tog .v{font-size:24px;font-weight:300}
+.tog .box{width:60px;height:24px;border:2px solid #fff;position:relative}
+.tog .box i{position:absolute;right:3px;top:3px;bottom:3px;left:28px;background:var(--accent)}
+.prev{margin:14px auto 0;width:210px;height:150px;border:2px solid #fff;border-bottom:none;border-radius:14px 14px 0 0;padding:14px 10px;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:22px;gap:4px}
+.prev i{background:var(--accent)}.prev .a{grid-column:span 2;grid-row:span 2}.prev .b{grid-column:span 4;grid-row:span 2}
+/* apps */
+.srch{width:30px;height:30px;border:2px solid #fff;border-radius:50%;margin:8px 0 6px 14px}
+.arow{display:flex;align-items:center;gap:16px;height:52px;padding-left:14px}
+.ico{width:44px;height:44px;background:var(--accent);display:grid;place-items:center}
+.ico svg{width:24px;height:24px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.an{font-size:20px;font-weight:300}
+.ltr{width:44px;height:44px;border:2px solid var(--accent);color:#fff;display:grid;place-items:center;font-size:24px;font-weight:300;margin-left:14px;margin-top:6px}
+/* centre */
+.qa{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 12px}
+.qa div{background:var(--accent);height:64px;padding:8px;font-size:9px;letter-spacing:.04em;display:flex;flex-direction:column;justify-content:space-between}
+.qa div.off{background:#2a2a2a}.qa svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2}
+.bar{display:flex;justify-content:space-between;padding:14px 22px;font-size:11px;letter-spacing:.06em}
+.note{padding:12px 22px}.note .h{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:300}
+.note .h i{width:28px;height:28px;background:var(--accent);display:block}
+.note .b{display:flex;justify-content:space-between;font-size:14px;margin-top:8px;font-weight:600}
+.note .b em{font-style:normal;font-weight:400;color:#c8c6be}
+.handle{position:absolute;left:0;right:0;bottom:52px;height:14px;background:var(--accent)}
+.handle:after{content:"";position:absolute;left:50%;top:6px;width:22px;height:2px;margin-left:-11px;background:#fff}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="phone" viewBox="0 0 24 24"><path d="M6 3h4l1.5 5-2.5 1.5a11 11 0 0 0 5.5 5.5L16 12.5l5 1.5v4c0 1-1 3-3 3C10 21 3 14 3 6c0-2 2-3 3-3z"/></symbol>
+  <symbol id="mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14"/><path d="M3 6l9 7 9-7"/></symbol>
+  <symbol id="msg" viewBox="0 0 24 24"><path d="M4 4h16v12H11l-4 4v-4H4z"/></symbol>
+  <symbol id="cam" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/></symbol>
+  <symbol id="folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></symbol>
+  <symbol id="bag" viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></symbol>
+  <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></symbol>
+  <symbol id="music" viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="7" cy="18" r="2.5"/><circle cx="17" cy="16" r="2.5"/></symbol>
+  <symbol id="pin" viewBox="0 0 24 24"><path d="M12 21s7-6 7-12a7 7 0 0 0-14 0c0 6 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></symbol>
+  <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></symbol>
+  <symbol id="note" viewBox="0 0 24 24"><path d="M5 3h14v18H5z"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+  <symbol id="term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><path d="M7 9l3 3-3 3M12 16h5"/></symbol>
+  <symbol id="wifi" viewBox="0 0 24 24"><path d="M3 9a14 14 0 0 1 18 0M6 12.5a9 9 0 0 1 12 0M9 16a4.5 4.5 0 0 1 6 0"/><circle cx="12" cy="19" r="1"/></symbol>
+  <symbol id="bt" viewBox="0 0 24 24"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></symbol>
+  <symbol id="plane" viewBox="0 0 24 24"><path d="M21 12l-8-3V4l-2-1-1 6-7 3v2l7-1 1 5-2 1v1l3-1 3 1v-1l-2-1 1-5z"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+</svg>
+
+<h1>TilesDE</h1>
+<p class="sub">Mockup, Glaze palette on AMOLED black. 540x1170 design scaled to 360x720. Not a screenshot of the running shell.</p>
+
+<div class="row">
+
+<!-- START -->
+<div>
+<div class="phone">
+  <div class="status"><span>4G &nbsp;▂▃▅</span><span class="r"><span class="bat"><i></i></span>14:32</span></div>
+  <div class="body start">
+    <div class="gh">Productivity</div>
+    <div class="grid">
+      <div class="t c s"><svg><use href="#phone"/></svg></div>
+      <div class="t k s"><svg><use href="#mail"/></svg><span class="n">2</span></div>
+      <div class="t p s"><svg><use href="#msg"/></svg><span class="n">4</span></div>
+      <div class="t c s"><svg><use href="#cam"/></svg></div>
+      <div class="t c m"><svg><use href="#folder"/></svg><span class="lab">Files</span></div>
+      <div class="t pic m"><span class="lab">Photos</span></div>
+      <div class="t p w"><div class="face"><b>Design review</b>Room 4, 15:00 - 16:00<br>Video link attached</div><span class="date">18</span><span class="lab">Calendar</span></div>
+    </div>
+    <div class="gh">Explore</div>
+    <div class="grid">
+      <div class="t c m"><svg><use href="#bag"/></svg><span class="lab">Kiln Store</span></div>
+      <div class="t k m"><svg><use href="#gear"/></svg><span class="lab">Settings</span></div>
+      <div class="t p s"><svg><use href="#music"/></svg></div>
+      <div class="t c s"><svg><use href="#pin"/></svg></div>
+      <div class="t k s"><svg><use href="#sun"/></svg></div>
+      <div class="t p s"><svg><use href="#note"/></svg></div>
+    </div>
+  </div>
+  <div class="nav">
+    <svg viewBox="0 0 24 24"><path d="M20 12H5M11 5l-7 7 7 7"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5l1.6 3.6 3.9.4-2.9 2.6.9 3.8L12 15l-3.5 1.9.9-3.8-2.9-2.6 3.9-.4z" fill="#fff" stroke="none"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="14" cy="10" r="6"/><path d="M10 14l-6 6"/></svg>
+  </div>
+</div>
+<div class="cap">START · groups, badges, live tiles</div>
+</div>
+
+<!-- ALL APPS -->
+<div>
+<div class="phone">
+  <div class="status"><span>4G &nbsp;▂▃▅</span><span class="r"><span class="bat"><i></i></span>14:32</span></div>
+  <div class="body">
+    <div class="srch"></div>
+    <div class="ltr">p</div>
+    <div class="arow"><div class="ico"><svg><use href="#phone"/></svg></div><span class="an">Phone</span></div>
+    <div class="arow"><div class="ico"><svg><use href="#cam"/></svg></div><span class="an">Photos</span></div>
+    <div class="ltr">s</div>
+    <div class="arow"><div class="ico"><svg><use href="#gear"/></svg></div><span class="an">Settings</span></div>
+    <div class="arow"><div class="ico"><svg><use href="#bag"/></svg></div><span class="an">Store</span></div>
+    <div class="ltr">t</div>
+    <div class="arow"><div class="ico"><svg><use href="#term"/></svg></div><span class="an">Terminal</span></div>
+    <div class="arow"><div class="ico"><svg><use href="#sun"/></svg></div><span class="an">Weather</span></div>
+    <div class="ltr">w</div>
+    <div class="arow"><div class="ico"><svg><use href="#wifi"/></svg></div><span class="an">Wi-Fi</span></div>
+  </div>
+  <div class="nav">
+    <svg viewBox="0 0 24 24"><path d="M20 12H5M11 5l-7 7 7 7"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5l1.6 3.6 3.9.4-2.9 2.6.9 3.8L12 15l-3.5 1.9.9-3.8-2.9-2.6 3.9-.4z" fill="#fff" stroke="none"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="14" cy="10" r="6"/><path d="M10 14l-6 6"/></svg>
+  </div>
+</div>
+<div class="cap">ALL APPS · outlined letters, accent squares</div>
+</div>
+
+<!-- SETTINGS -->
+<div>
+<div class="phone">
+  <div class="status"><span>4G &nbsp;▂▃▅</span><span class="r"><span class="bat"><i></i></span>14:32</span></div>
+  <div class="body cp">
+    <div class="cap1">SETTINGS</div>
+    <div class="big">start+theme</div>
+    <div class="lbl">Background</div>
+    <div class="sel">amoled</div>
+    <div class="lbl">Accent colour</div>
+    <div class="sel"><span class="sw"></span>terracotta</div>
+    <div class="lbl">Preset</div>
+    <div class="sel">glaze</div>
+    <div class="tog"><span class="v">Show more tiles<br><small style="font-size:13px;color:#b8b6ae">On</small></span><span class="box"><i></i></span></div>
+    <div class="prev"><i></i><i></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i></div>
+  </div>
+  <div class="nav">
+    <svg viewBox="0 0 24 24"><path d="M20 12H5M11 5l-7 7 7 7"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5l1.6 3.6 3.9.4-2.9 2.6.9 3.8L12 15l-3.5 1.9.9-3.8-2.9-2.6 3.9-.4z" fill="#fff" stroke="none"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="14" cy="10" r="6"/><path d="M10 14l-6 6"/></svg>
+  </div>
+</div>
+<div class="cap">SETTINGS · pivot page, flat outlined controls</div>
+</div>
+
+<!-- ACTION CENTRE -->
+<div>
+<div class="phone">
+  <div class="status"><span>4G &nbsp;▂▃▅</span><span class="r"><span class="bat"><i></i></span>14:32</span></div>
+  <div class="body">
+    <div class="qa">
+      <div><svg><use href="#wifi"/></svg>HOME WI-FI</div>
+      <div><svg><use href="#bt"/></svg>NOT CONNECTED</div>
+      <div class="off"><svg><use href="#plane"/></svg>AIRPLANE MODE</div>
+      <div><svg><use href="#lock"/></svg>ROTATION LOCK</div>
+    </div>
+    <div class="bar"><span>✕ &nbsp;CLEAR ALL</span><span>⚙ &nbsp;ALL SETTINGS</span></div>
+    <div class="note"><div class="h"><i></i>Messages</div><div class="b"><span>Sam: lunch at 1?</span><em>2:10p</em></div></div>
+    <div class="note"><div class="h"><i></i>Kiln Store</div><div class="b"><span>2 apps have been updated</span><em>1:59p</em></div></div>
+    <div class="note"><div class="h"><i></i>Calendar</div><div class="b"><span>Design review in 15 min</span><em>2:45p</em></div></div>
+  </div>
+  <div class="handle"></div>
+  <div class="nav">
+    <svg viewBox="0 0 24 24"><path d="M20 12H5M11 5l-7 7 7 7"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5l1.6 3.6 3.9.4-2.9 2.6.9 3.8L12 15l-3.5 1.9.9-3.8-2.9-2.6 3.9-.4z" fill="#fff" stroke="none"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="14" cy="10" r="6"/><path d="M10 14l-6 6"/></svg>
+  </div>
+</div>
+<div class="cap">ACTION CENTRE · quick tiles, notifications</div>
+</div>
+
+</div>
+</body>
+</html>

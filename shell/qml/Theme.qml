@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import FlowShell
 
 // Design tokens. Default: "Tiles" (Windows-Phone-style flat black/white with solid accent tiles, see docs/tiles-spec.md).
 // Previous default: "AnthropicGlassIcons" (alias anthropic-glass-icons): flat Kiln cut-paper wallpaper,
@@ -9,9 +10,37 @@ import QtQuick
 QtObject {
     id: t
     property string name: "Tiles"
-    property bool dark: true
+    // Scheme: bound to Personalise.scheme (dark | amoled | light). `dark` is true for dark and amoled.
+    // Legacy writes (Theme.dark = x) are accepted: they are forwarded to Personalise.scheme and the binding is restored.
+    // Prefer Personalise.scheme or Theme.setDark(b).
+    property bool dark: Personalise.scheme !== "light"
     property bool reduceTransparency: false
-    property bool reduceMotion: false
+    // Effective reduce-motion: system flag (Services) or Personalise.motion === "off". Legacy writes (Theme.reduceMotion = x)
+    // are taken as the system flag. Prefer Theme.systemReduceMotion = x.
+    property bool systemReduceMotion: false
+    property bool reduceMotion: systemReduceMotion || Personalise.motion === "off"
+    function setDark(b) { Personalise.scheme = b ? (Personalise.scheme === "light" ? "dark" : Personalise.scheme) : "light" }
+    function _bindDark() { dark = Qt.binding(function() { return Personalise.scheme !== "light" }) }
+    function _bindMotion() { reduceMotion = Qt.binding(function() { return t.systemReduceMotion || Personalise.motion === "off" }) }
+    function _bindAccent() { userAccent = Qt.binding(function() { return Personalise.accent }) }
+    onDarkChanged: {
+        const want = dark ? (Personalise.scheme === "light" ? "dark" : Personalise.scheme) : "light"
+        if (Personalise.scheme !== want) { Personalise.scheme = want; _bindDark() }
+    }
+    onReduceMotionChanged: {
+        const expect = systemReduceMotion || Personalise.motion === "off"
+        if (reduceMotion !== expect) { systemReduceMotion = reduceMotion; _bindMotion() }
+    }
+    onUserAccentChanged: {
+        if (Qt.color(Personalise.accent).toString() !== userAccent.toString()) { Personalise.accent = userAccent.toString(); _bindAccent() }
+    }
+    // a same-value legacy write drops a binding without a change signal: restore all three whenever the store changes
+    readonly property Connections _store: Connections {
+        target: Personalise
+        function onSchemeChanged() { t._bindDark() }
+        function onMotionChanged() { t._bindMotion() }
+        function onAccentChanged() { t._bindAccent() }
+    }
     property string glass: "full"          // power ladder: full | blur | flat
     property var backdrop: null            // shared downsampled wallpaper source (set by Main)
     property var backdropItem: null
@@ -70,7 +99,7 @@ QtObject {
                      onWall: "#faf9f5", w0: "#141413", w1: "#1f1e1d", w2: "#3a2a22", w3: "#5a2f22", icon: "#faf9f5", card: "#262624", glassTint: "#262624", glyph: "light" } }
     })
     readonly property var cur: sets[name] || sets.AnthropicGlassIcons
-    readonly property var c: dark ? cur.dark : cur.light
+    readonly property var c: tiles ? tilesC : (dark ? cur.dark : cur.light)
 
     readonly property color text: c.text
     readonly property color textDim: c.dim
@@ -85,7 +114,7 @@ QtObject {
     readonly property color wall3: c.w3
     readonly property string wallpaperSource: cur.wall ? (dark ? cur.wall.dark : cur.wall.light) : ""
     readonly property real radius: cur.radius
-    readonly property real tileRadius: cur.tileRadius
+    readonly property real tileRadius: tiles ? Personalise.tileRadius : cur.tileRadius
 
     // surface glass level: 0 full lensing, 1 blur only, 2 flat. Forced flat by reduce-transparency or flat-surface themes.
     readonly property int quality: (reduceTransparency || !cur.surfGlass) ? 2 : glass === "flat" ? 2 : glass === "blur" ? 1 : 0
@@ -100,38 +129,120 @@ QtObject {
     readonly property real refractPx: cur.refraction
     readonly property real bezelPx: cur.bezel
     readonly property real rim: cur.rim
-    readonly property int animMs: reduceMotion ? 0 : 280
+    readonly property int animMs: Math.round(280 * (tiles ? motionScale : (reduceMotion ? 0 : 1)))
     readonly property bool paper: name === "AnthropicGlassIcons" || name === "AnthropicDesign" || name === "Minimalist"
     readonly property string font: "Inter"
     readonly property string serif: (name === "AnthropicGlassIcons" || name === "AnthropicDesign") ? "Noto Serif" : "Inter"
 
-    // ---- Tiles theme (see docs/tiles-spec.md) ----
-    // Accent: other themes use their own; "Tiles" uses the user-selectable accent. Set at runtime: Theme.userAccent = "#0078d7" or Theme.setAccent(3).
-    readonly property var accents: ["#D97757", "#E5484D", "#E8508C", "#A855D6", "#6E56CF", "#3E63DD", "#0F8BD6", "#12A594", "#30A46C", "#7D9A2E", "#E5A100", "#7A7A7A"]
-    readonly property var accentNames: ["terracotta", "red", "pink", "purple", "indigo", "blue", "cyan", "teal", "green", "lime", "amber", "steel"]
-    property color userAccent: "#D97757"
-    function setAccent(i) { if (i >= 0 && i < accents.length) userAccent = accents[i] }
-    readonly property color accent: name === "Tiles" ? userAccent : c.accent
+    // ---- Tiles theme (see docs/tiles-spec.md, section Personalisation) ----
+    // Everything below reads the persisted store `Personalise` (shell/src/Personalise.h) and applies live.
+    // Accent: other themes use their own; "Tiles" uses the user-selectable accent. Theme.userAccent (writable, forwarded to
+    // Personalise.accent), Theme.setAccent(i) picks from `accents`.
+    readonly property var accents: Personalise.accentColours
+    readonly property var accentNames: Personalise.accentNames
+    property color userAccent: Personalise.accent
+    function setAccent(i) { if (i >= 0 && i < accents.length) Personalise.accent = accents[i] }
+    readonly property color accent: tiles ? userAccent : c.accent
     readonly property bool tiles: name === "Tiles"
-    readonly property color tileText: "#ffffff"          // glyph and label on solid accent, both schemes
+
+    // preset and scheme
+    readonly property string preset: Personalise.preset
+    readonly property var presetDef: Personalise.currentPreset
+    readonly property string scheme: Personalise.scheme          // dark | amoled | light
+    readonly property bool amoled: Personalise.scheme === "amoled"
+    readonly property bool light: !dark
+    readonly property color presetAccent: Qt.color(presetDef.accent || "#D97757")
+    // base colours of the Tiles theme for the current preset and scheme (feeds `c`, so text/textDim/card/flatSurface follow)
+    readonly property var tilesC: {
+        const p = presetDef, base = dark ? sets.Tiles.dark : sets.Tiles.light
+        const o = { accent: Personalise.accent }
+        if (dark) {
+            o.text = p.textDark || base.text; o.dim = p.dimDark || base.dim
+            o.card = amoled ? "#121212" : (p.cardDark || base.card)
+            o.flat = amoled ? "#000000" : (p.bgDark || base.flat)
+            o.glassTint = o.card
+        } else {
+            o.card = p.cardLight || base.card; o.flat = p.bgLight || base.flat
+        }
+        return Object.assign({}, base, o)
+    }
+    readonly property color pageBg: !tiles ? (dark ? "#000000" : "#ffffff")
+                                    : amoled ? "#000000" : dark ? Qt.color(presetDef.bgDark || "#000000") : Qt.color(presetDef.bgLight || "#ffffff")
+
+    // tile palette: preset palette with the preset's own accent swatch replaced by the live accent
+    readonly property var tilePalette: {
+        const pal = presetDef.palette || [], pa = presetAccent.toString(), out = []
+        for (let i = 0; i < pal.length; i++) out.push(Qt.color(pal[i]).toString() === pa ? userAccent : Qt.color(pal[i]))
+        if (!out.length) out.push(userAccent)
+        return out
+    }
+    // fill colour of tile `id`: per-tile override, else palette[defaultIndex mod size]
+    function tileColor(id, defaultIndex) {
+        const m = Personalise.tileColors
+        if (id !== undefined && m && m[id]) return Qt.color(m[id])
+        const pal = tilePalette
+        return pal[((defaultIndex | 0) % pal.length + pal.length) % pal.length]
+    }
+    function hasTileColor(id) { const m = Personalise.tileColors; return !!(m && m[id]) }
+    // ink for a fill: white unless white would drop under 3:1 (large text), then black. terracotta keeps white (3.12:1).
+    function _lin(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+    function luminance(col) { const q = Qt.color(col); return 0.2126 * _lin(q.r) + 0.7152 * _lin(q.g) + 0.0722 * _lin(q.b) }
+    function contrast(a, b) { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
+    function onColor(fill) { return contrast("#ffffff", fill) >= 3.0 ? "#ffffff" : "#000000" }
+    // swatches for a preset picker (does not apply it): { bg, card, text, accent, palette[] } for the current scheme
+    function presetInfo(pname) {
+        const _dep = Personalise.customPresets      // re-evaluate when custom presets change
+        const p = Personalise.presetData(pname), pal = [], pa = Qt.color(p.accent || "#D97757").toString()
+        const pp = p.palette || []
+        for (let i = 0; i < pp.length; i++) pal.push(Qt.color(pp[i]))
+        return { name: pname, custom: !!p.custom, accent: Qt.color(p.accent || "#D97757"), palette: pal,
+                 bg: amoled ? Qt.color("#000000") : Qt.color(dark ? (p.bgDark || "#000000") : (p.bgLight || "#ffffff")),
+                 card: Qt.color(dark ? (p.cardDark || "#1b1b1b") : (p.cardLight || "#f0f0f0")),
+                 text: Qt.color(dark ? (p.textDark || "#ffffff") : "#000000") }
+    }
+
+    readonly property color tileText: "#ffffff"          // default glyph and label on a solid accent fill (use onColor(fill) for palette tiles)
     readonly property color tileBack: Qt.darker(accent, 1.18)   // flip back face
+    function tileBackOf(fill) { return Qt.darker(fill, 1.18) }
     readonly property color tileDisabled: dark ? "#2a2a2a" : "#cfcfcf"
-    readonly property color pageBg: dark ? "#000000" : "#ffffff"
-    readonly property int tileGap: 6
+
+    // tile look
+    readonly property real tileOpacity: tiles ? Personalise.tileOpacity : 1.0
+    readonly property bool tilesOverWallpaper: tiles && Personalise.tilesOverWallpaper
+    readonly property real grain: tiles ? Personalise.grain : 0.0       // paper-grain strength 0..1 for the page background
+    readonly property bool showLabels: Personalise.labels
+    readonly property bool showBadges: Personalise.badges
+    readonly property string startPhoto: Personalise.startPhoto
+    readonly property var groups: Personalise.groups                    // [{name, collapsed}]
+
+    // layout
+    readonly property int tileGap: tiles ? Personalise.gap : 6
     readonly property int gap: tileGap
     readonly property int pageMargin: 12
-    readonly property int tileCols: 4
+    readonly property int tileCols: tiles ? Personalise.columns : 4
     readonly property real glyphStroke: 3.6
-    // edge of one small tile for a screen of given width: 4 columns, 3 inner gaps, margin on both sides
+    // edge of one small tile for a screen of given width: tileCols columns, inner gaps, margin on both sides
     function tileUnit(w) { return Math.floor((w - 2 * pageMargin - (tileCols - 1) * tileGap) / tileCols) }
-    // pixel size (w, h) of a tile size name on a screen of width w
-    function tileW(size, w) { const u = tileUnit(w); return size === "small" ? u : size === "medium" ? 2 * u + tileGap : 4 * u + 3 * tileGap }
-    function tileH(size, w) { const u = tileUnit(w); return size === "small" ? u : size === "wide" || size === "medium" ? 2 * u + tileGap : 4 * u + 3 * tileGap }
-    // motion
-    readonly property int flipMs: reduceMotion ? 0 : 450
-    readonly property int flipPeriodMs: 6000
+    // width of one full row of tiles (wide / large tiles span it)
+    function rowWidth(w) { return tileCols * tileUnit(w) + (tileCols - 1) * tileGap }
+    // pixel size (w, h) of a tile size name on a screen of width w. small 1x1, medium 2x2, wide = row x 2u, large = row x row.
+    function tileW(size, w) { const u = tileUnit(w); return size === "small" ? u : size === "medium" ? 2 * u + tileGap : rowWidth(w) }
+    function tileH(size, w) { const u = tileUnit(w); return size === "small" ? u : size === "wide" || size === "medium" ? 2 * u + tileGap : rowWidth(w) }
+
+    // typography
+    readonly property int fontLight: tiles ? Personalise.fontWeight : Font.Light     // weight of titles and big numbers (100..900)
+    readonly property int fontWeightTitle: fontLight
+    readonly property string titleCase: Personalise.titleCase                        // lower | upper
+    function title(s) { return Personalise.titleCase === "upper" ? String(s).toUpperCase() : String(s).toLowerCase() }
+
+    // motion. motionScale: off 0, low 0.6, normal 1, high 1.4. All durations are 0 under reduceMotion.
+    readonly property real motionScale: reduceMotion ? 0 : ({ off: 0, low: 0.6, normal: 1.0, high: 1.4 })[Personalise.motion]
+    readonly property real tiltScale: ({ off: 0, low: 0.5, normal: 1.0, high: 1.5 })[Personalise.motion]
+    readonly property int flipSpeed: Personalise.flipSpeed                        // 0 off, 1 normal, 2 fast
+    readonly property bool flipEnabled: !reduceMotion && flipSpeed > 0
+    readonly property int flipMs: flipEnabled ? Math.round((flipSpeed === 2 ? 300 : 450) * Math.max(0.6, motionScale)) : 0
+    readonly property int flipPeriodMs: flipSpeed === 2 ? 3500 : 6000
     readonly property int flipStaggerMs: 140
-    readonly property int pressMs: reduceMotion ? 0 : 140
-    readonly property int turnstileMs: reduceMotion ? 0 : 320
-    readonly property int fontLight: Font.Light
+    readonly property int pressMs: Math.round(140 * motionScale)
+    readonly property int turnstileMs: Math.round(320 * motionScale)
 }

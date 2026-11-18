@@ -82,6 +82,7 @@ void Services::send(const QString &json) {
 // Protocol (JSON lines):
 //   {"event":"gesture","name":"home|back|switcher|shade|qs"}
 //   {"set":"theme|scheme|glass|reduceTransparency|reduceMotion|screen","value":"..."}
+//   {"get":"config|<key>"}  -> one JSON line reply {"get":..,"value":..}
 //   {"notify":{"app":..,"title":..,"body":..}}
 void Services::onLine(const QByteArray &line) {
     const auto o = QJsonDocument::fromJson(line).object();
@@ -92,6 +93,8 @@ void Services::onLine(const QByteArray &line) {
         else if (k == "reduceTransparency") { m_reduceTransp = v == "1" || v == "true"; emit changed(); }
         else if (k == "reduceMotion") { m_reduceMotion = v == "1" || v == "true"; emit changed(); }
         emit command(k, v);
+    } else if (o.contains("get")) {   // {"get":"config"|<key>}: reply comes back from QML via send()
+        emit command("get", o["get"].toVariant().toString());
     } else if (o.contains("notify")) {
         const auto n = o["notify"].toObject();
         m_notifs.add(n["app"].toString(), n["title"].toString(), n["body"].toString());

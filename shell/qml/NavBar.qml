@@ -5,8 +5,8 @@ import FlowShell
 Rectangle {
     id: root
     height: 56
-    color: "#000000"
-    property color ink: "#ffffff"
+    color: Theme.pageBg
+    property color ink: Theme.text
     signal back
     signal home
     signal search

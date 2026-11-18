@@ -9,8 +9,9 @@ Item {
     property date now: new Date()
     Timer { interval: 10000; running: true; repeat: true; onTriggered: root.now = new Date() }
 
+    // left cluster: signal + wifi; right cluster: battery + clock (flat, thin, no pills)
     Row {
-        anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+        anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
         spacing: 10
         // signal bars
         Row {
@@ -33,10 +34,14 @@ Item {
                 c.beginPath(); c.arc(8, 11, 1.2, 0, 6.3); c.fill()
             }
         }
+    }
+    Row {
+        anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+        spacing: 10
         // battery
         Row {
             spacing: 3; anchors.verticalCenter: parent.verticalCenter
-            Text { visible: false; text: Services.battery + "%"; color: root.ink; font.pixelSize: 12; font.weight: Font.Light
+            Text { visible: true; text: Services.battery + "%"; color: root.ink; font.pixelSize: 12; font.weight: Theme.fontLight
                 font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
             Item {
                 width: 22; height: 11; anchors.verticalCenter: parent.verticalCenter
@@ -46,7 +51,7 @@ Item {
                 Rectangle { x: 20; y: 3; width: 2; height: 5; color: root.ink }
             }
         }
-        Text { text: Qt.formatTime(root.now, "hh:mm"); color: root.ink; font.pixelSize: 14; font.weight: Font.Light
+        Text { text: Qt.formatTime(root.now, "hh:mm"); color: root.ink; font.pixelSize: 14; font.weight: Theme.fontLight
             font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
     }
 }

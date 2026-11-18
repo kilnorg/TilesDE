@@ -11,14 +11,24 @@ qt_add_executable(flowde-shell src/main.cpp src/Services.cpp src/Services.h src/
 set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qml/StatusBar.qml
   qml/GestureBar.qml qml/LockScreen.qml qml/HomeScreen.qml qml/AppSwitcher.qml qml/Shade.qml
   qml/AppIcon.qml qml/GlassIcon.qml qml/AppPage.qml qml/Toggle.qml qml/SliderRow.qml
-  qml/MetroTile.qml qml/TileGlyph.qml qml/TileGallery.qml qml/StartScreen.qml qml/AllApps.qml qml/AlphaJump.qml qml/NavBar.qml)
+  qml/MetroTile.qml qml/TileGlyph.qml qml/TileGallery.qml qml/StartScreen.qml qml/AllApps.qml qml/AlphaJump.qml qml/NavBar.qml qml/TilePresets.js
+  qml/TileFaces.qml qml/TileGroupHeader.qml
+  qml/Pivot.qml qml/PivotPage.qml qml/MetroToggle.qml qml/MetroDropdown.qml qml/MetroButton.qml qml/MetroTextField.qml
+  qml/MetroListRow.qml qml/MetroSlider.qml qml/MetroColorGrid.qml qml/MetroSectionHeader.qml qml/AppBar.qml qml/ControlsGallery.qml
+  qml/SettingsApp.qml qml/SettingsHome.qml
+  qml/settings/SettingsStartTheme.qml qml/settings/SettingsLockPage.qml qml/settings/SettingsAppPage.qml
+  qml/settings/SettingsTilePreview.qml qml/settings/SettingsGroupManager.qml
+  qml/settings2/index.js qml/settings2/SettingsDisplay.qml qml/settings2/SettingsNotifications.qml qml/settings2/SettingsBattery.qml
+  qml/settings2/SettingsNetwork.qml qml/settings2/SettingsAbout.qml qml/settings2/SettingsSound.qml qml/settings2/SettingsEmail.qml
+  qml/settings2/SettingsDevices.qml)
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
+qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
 qt_add_shaders(flowde-shell "flowde-shaders" PREFIX "/FlowShell" FILES shaders/glass.frag shaders/wallpaper.frag shaders/icon.frag
   OUTPUTS shaders/glass.frag.qsb shaders/wallpaper.frag.qsb shaders/icon.frag.qsb BATCHABLE
   GLSL "100 es,120,150" NOHLSL NOMSL)
 file(GLOB ASSET_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} assets/icons/*.svg assets/wallpapers/*.png)
 qt_add_resources(flowde-shell "assets" PREFIX "/FlowShell" FILES ${ASSET_FILES})
+target_include_directories(flowde-shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(flowde-shell PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network)
 install(TARGETS flowde-shell RUNTIME DESTINATION bin)

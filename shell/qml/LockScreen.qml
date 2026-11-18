@@ -31,11 +31,11 @@ Item {
     Column {
         id: clock
         anchors { left: parent.left; leftMargin: 28; bottom: badges.top; bottomMargin: 36 }
-        spacing: -6
+        spacing: -10
         Text { text: Qt.formatTime(root.now, "hh:mm"); color: "#ffffff"
-            font.pixelSize: 120; font.weight: Font.ExtraLight; font.family: Theme.font }
+            font.pixelSize: 136; font.weight: Font.ExtraLight; font.family: Theme.font }
         Text { text: Qt.formatDate(root.now, "dddd, d MMMM").toLowerCase(); color: "#ffffff"
-            font.pixelSize: 24; font.weight: Font.Light; font.family: Theme.font }
+            font.pixelSize: 26; font.weight: Theme.fontLight; font.family: Theme.font }
     }
 
     Row {
@@ -46,14 +46,20 @@ Item {
             model: [ { g: "mail", n: root.mailCount }, { g: "message", n: root.messageCount }, { g: "calendar", n: root.calendarCount } ]
             delegate: Row {
                 required property var modelData
-                spacing: 8
-                TileGlyph { name: modelData.g; size: 30; stroke: 2; color: "#ffffff"; anchors.verticalCenter: parent.verticalCenter }
-                Text { text: modelData.n; color: "#ffffff"; font.pixelSize: 22; font.weight: Font.Light
+                spacing: 10
+                visible: Theme.showBadges
+                Rectangle {
+                    width: 44; height: 44; radius: Theme.tileRadius
+                    color: modelData.n > 0 ? Theme.accent : "transparent"
+                    border.width: modelData.n > 0 ? 0 : 1.5; border.color: "#ffffff"
+                    TileGlyph { anchors.centerIn: parent; name: modelData.g; size: 26; stroke: 2; color: modelData.n > 0 ? Theme.onColor(Theme.accent) : "#ffffff" }
+                }
+                Text { text: modelData.n; color: "#ffffff"; font.pixelSize: 26; font.weight: Theme.fontLight
                     font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }
             }
         }
     }
 
     Text { id: hint; anchors { bottom: parent.bottom; bottomMargin: 20; horizontalCenter: parent.horizontalCenter }
-        text: "swipe up to unlock"; color: "#ffffff"; opacity: 0.5; font.pixelSize: 12; font.weight: Font.Light; font.family: Theme.font }
+        text: "swipe up to unlock"; color: "#ffffff"; opacity: 0.6; font.pixelSize: 12; font.weight: Theme.fontLight; font.family: Theme.font }
 }

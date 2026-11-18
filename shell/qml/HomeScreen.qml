@@ -64,6 +64,7 @@ Item {
         visible: root.pagerP > 0.001
         onLaunched: (n, r) => root.launched(n, r, false)
         onPinRequested: (n, g) => { if (start.pinApp(n, g)) root.showStart() }
+        onSearchRequested: root.searchOpen = true
     }
 
     // horizontal page swipe (vertical drags stay with the Flickables)
@@ -103,7 +104,7 @@ Item {
         Rectangle {
             id: bar
             x: 12; y: root.topInset + 12; width: parent.width - 24; height: 52
-            color: "transparent"; border.width: 2; border.color: Theme.tileText
+            color: "transparent"; border.width: 2; border.color: Theme.text
             TextInput {
                 id: input
                 anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
@@ -125,9 +126,10 @@ Item {
                     anchors { fill: parent; leftMargin: 12 }
                     spacing: 14
                     Rectangle {
-                        width: 48; height: 48; anchors.verticalCenter: parent.verticalCenter; color: Theme.accent
-                        TileGlyph { anchors.centerIn: parent; size: 28; name: modelData.glyph; visible: modelData.glyph !== ""; color: Theme.tileText }
-                        Text { anchors.centerIn: parent; visible: modelData.glyph === ""; text: modelData.name.charAt(0).toUpperCase(); color: Theme.tileText; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.Normal }
+                        width: 48; height: 48; anchors.verticalCenter: parent.verticalCenter
+                        color: Theme.tileColor(modelData.name.toLowerCase(), 0); opacity: Theme.tileOpacity
+                        TileGlyph { anchors.centerIn: parent; size: 28; name: modelData.glyph; visible: modelData.glyph !== ""; color: Theme.onColor(parent.color) }
+                        Text { anchors.centerIn: parent; visible: modelData.glyph === ""; text: modelData.name.charAt(0).toUpperCase(); color: Theme.onColor(parent.color); font.family: Theme.font; font.pixelSize: 26; font.weight: Font.Normal }
                     }
                     Text { text: modelData.name; anchors.verticalCenter: parent.verticalCenter; color: Theme.text; font.pixelSize: 22; font.weight: Font.Light; font.family: Theme.font }
                 }

@@ -5,7 +5,8 @@ import FlowShell
 Window {
     id: win
     visible: true
-    width: 540; height: 1170
+    // FLOWDE_SIZE=WxH sets the window size; the UI keeps its 540 px design width and scales to fit.
+    width: StartSize.width; height: StartSize.height
     color: "black"
     title: "TilesDE"
 
@@ -20,9 +21,40 @@ Window {
     Behavior on appP { enabled: !win.appDrag && !Theme.reduceMotion; SpringAnimation { spring: 4.2; damping: 0.38; epsilon: 0.001; mass: 1 } }
     // Starts on touch-up, never waits for the app: one progress value (appP) drives the shared element.
     function openApp(name, rect, launching) {
+        if (name === "Settings") { openSettings(""); return }
         if (openApps.indexOf(name) < 0) openApps = openApps.concat([name])
         appName = name; appRect = rect; appLaunching = !!launching; shadeP = 0; page = "app"
         if (launching) launchTimer.restart()
+    }
+    // Settings app: full-screen layer above apps, below the status bar. "" keeps its current page.
+    property bool settingsOpen: false
+    property string overlay: ""        // "" | "controls"
+    function openSettings(name) {
+        shadeP = 0; home.searchOpen = false; overlay = ""
+        if (page === "lock") page = "home"
+        settingsOpen = true
+        if (name !== "") settings.open(name)
+        settings.forceActiveFocus()
+    }
+    function closeSettings() { settingsOpen = false; settings.goHome(true) }
+    // first vertical Flickable on screen inside item (the visible pivot page)
+    function _vflick(item) {
+        for (let i = 0; i < item.children.length; ++i) {
+            const c = item.children[i]
+            if (!c.visible) continue
+            if (c.flickableDirection === Flickable.VerticalFlick && c.contentHeight !== undefined) {
+                const pt = c.mapToItem(root, 0, 0)
+                if (pt.x > -10 && pt.x < root.width / 2) return c
+            }
+            const r = _vflick(c); if (r) return r
+        }
+        return null
+    }
+    function scrollSettings(v) {
+        const f = _vflick(settingsOpen ? settings : root); if (!f) return false
+        const max = Math.max(0, f.contentHeight - f.height)
+        f.contentY = v === "end" ? max : v === "top" ? 0 : Math.max(0, Math.min(max, Number(v)))
+        return true
     }
     Timer { id: launchTimer; interval: 1600; onTriggered: if (win.appLaunching) win.gesture("home") }
     
@@ -53,6 +85,13 @@ Window {
         else if (StartPage === "alpha") { home.showApps(); home.allApps.alpha.open = true }
     }
     function screenCmd(v) {
+        if (v === "settings") { openSettings("home"); return }
+        if (v === "settings-theme") { openSettings("start+theme"); return }
+        if (v === "settings-lock") { openSettings("lock screen"); return }
+        if (v === "groups") { openSettings("start+theme"); scrollLater.restart(); return }
+        if (v === "controls") { settingsOpen = false; shadeP = 0; if (page === "lock") page = "home"; overlay = "controls"; return }
+        if (v.indexOf("settings-") === 0) { openSettings(v.substring(9)); return }
+        settingsOpen = false; overlay = ""
         home.searchOpen = false; home.allApps.closeOverlays()
         if (v !== "edit" && home.start.editing) home.start.exitEdit()
         if (v === "shade" || v === "centre") { shadeP = 1; return }
@@ -72,16 +111,28 @@ Window {
             Theme.reduceMotion = Services.reduceMotion
         }
         function onGesture(name) { win.gesture(name) }
+        // Keys: theme, open, screen, settings (page name|back|home), scroll (px|top|end), get (config|<key>),
+        // Start keys (select closesheet tilesize unpintile tilepicture tilelabel), else Personalise.command
+        // (preset scheme accent amoled gap radius opacity columns labels badges grain flip weight case motion photo reset ...).
         function onCommand(k, v) {
             if (k === "theme") Theme.select(v)
-            else if (k === "scheme") Theme.dark = (v === "dark")
-            else if (k === "open") win.openApp(v, Qt.rect(win.width / 2 - 31, win.height * 0.2, 62, 62), false)
+            else if (k === "open") win.openApp(v, Qt.rect(root.width / 2 - 31, root.height * 0.2, 62, 62), false)
             else if (k === "screen") win.screenCmd(v)
+            else if (k === "settings") { if (v === "back") settings.back(); else if (v === "close") win.closeSettings(); else win.openSettings(v) }
+            else if (k === "scroll") win.scrollSettings(v)
+            else if (k === "shot") win.contentItem.grabToImage(function(r) { r.saveToFile(v) })   // test hook: PNG of the window
+            else if (k === "get") Services.send(JSON.stringify({ get: v, value: (v === "config" || v === "all" || v === "") ? Personalise.toMap() : Personalise.get(v) }))
+            else if (["select", "closesheet", "tilesize", "unpintile", "tilepicture", "tilelabel"].indexOf(k) >= 0) home.start.command(k, v)
+            else if (["glass", "reduceTransparency", "reduceMotion"].indexOf(k) >= 0) return
+            else if (!Personalise.command(k, String(v))) console.info("tilesde: unknown or invalid command", k, v)
         }
     }
 
     function gesture(name) {
         if (page === "lock" && name !== "shade" && name !== "qs") return
+        if (overlay !== "" && (name === "home" || name === "back")) { overlay = ""; return }
+        if (settingsOpen && name === "back" && shadeP < 0.5) { settings.back(); return }
+        if (settingsOpen && (name === "home" || name === "switcher")) closeSettings()
         if (name === "home") {
             shadeP = 0; home.searchOpen = false; home.allApps.closeOverlays()
             const wasStart = (page === "home" && home.pagerP < 0.5 && !home.start.editing)
@@ -99,9 +150,13 @@ Window {
         }
     }
 
+    Timer { id: scrollLater; interval: Theme.turnstileMs + 400; onTriggered: win.scrollSettings("end") }
+
     Item {
         id: root
-        anchors.fill: parent
+        // design width 540; height follows the window aspect
+        width: 540; height: Math.round(win.height * 540 / Math.max(1, win.width))
+        scale: win.width / 540; transformOrigin: Item.TopLeft
         Wallpaper { id: wall; anchors.fill: parent; visible: win.lockP < 0.995 }
         Rectangle { anchors.fill: parent; color: "black"; opacity: win.lockP }
         // one shared, quarter-resolution snapshot of the wallpaper feeds every glass panel
@@ -123,19 +178,39 @@ Window {
             scale: Theme.tiles ? (1 - 0.06 * win.appP) : (0.96 + 0.04 * win.lockP * (1 - win.switchP * 0.6)) * (1 - 0.06 * win.appP)
             topInset: 28; bottomInset: 56
             opacity: win.page === "switcher" ? 0.0 : win.lockP
+            // hidden under a full-screen Settings/controls layer: 3D tile flips otherwise poke through it
+            visible: win.overlay === "" && !(win.settingsOpen && settings.opacity > 0.99)
             dim: 0.28 * win.appP
             onLaunched: (n, r, real) => win.openApp(n, r, real)
+            Connections { target: home.allApps; function onSearchRequested() { win.gesture("search") } }
         }
         AppSwitcher {
             anchors.fill: parent
             opacity: win.switchP
             scale: 0.9 + 0.1 * win.switchP
             running: win.openApps
-            onPicked: (n) => win.openApp(n, Qt.rect(win.width / 2 - 31, win.height / 2 - 31, 62, 62), false)
+            onPicked: (n) => win.openApp(n, Qt.rect(root.width / 2 - 31, root.height / 2 - 31, 62, 62), false)
             onClosedAll: { win.openApps = []; win.page = "home" }
             onClosedOne: (n) => win.openApps = win.openApps.filter(x => x !== n)
         }
-        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: win.width; sh: win.height; launching: win.appLaunching; z: 15; onBack: win.gesture("home") }
+        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; z: 15; onBack: win.gesture("home") }
+        SettingsApp {
+            id: settings
+            anchors.fill: parent; anchors.bottomMargin: 56; z: 16
+            topInset: 36
+            visible: opacity > 0.01
+            enabled: win.settingsOpen
+            opacity: win.settingsOpen ? 1 : 0
+            scale: win.settingsOpen ? 1 : 0.94
+            Behavior on opacity { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.turnstileMs; easing.type: Easing.OutCubic } }
+            Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: Theme.turnstileMs; easing.type: Easing.OutCubic } }
+            onClosed: win.closeSettings()
+        }
+        Rectangle {
+            anchors.fill: parent; z: 17; color: Theme.pageBg
+            visible: win.overlay === "controls"
+            Loader { anchors.fill: parent; anchors.topMargin: 36; anchors.bottomMargin: 56; active: parent.visible; sourceComponent: ControlsGallery {} }
+        }
         LockScreen { id: lock; anchors.fill: parent; progress: win.lockP }
 
         // lock: swipe up
@@ -143,21 +218,21 @@ Window {
             id: lockDrag
             enabled: win.page === "lock"
             target: null; xAxis.enabled: false
-            onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / (win.height * 0.5)))
+            onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / (root.height * 0.5)))
             onActiveChanged: if (!active) {
                 if (win.lockP > 0.35 || centroid.velocity.y < -900) win.page = "home"
                 else { win.page = "lock"; win.lockP = 0 }
             }
         }
 
-        StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: "white" }
+        StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: win.page === "lock" ? "white" : Theme.text }
         // top-edge pull for shade
         Item {
             z: 21; anchors { top: parent.top; left: parent.left; right: parent.right } height: 44
             DragHandler {
                 id: shadeDrag
                 target: null; xAxis.enabled: false
-                onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, translation.y / (win.height * 0.4)))
+                onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, translation.y / (root.height * 0.4)))
                 onActiveChanged: if (!active) win.shadeP = win.shadeP > 0.3 ? 1 : 0
             }
         }
@@ -165,24 +240,25 @@ Window {
             id: shade; z: 30
             width: parent.width; height: parent.height
             progress: win.shadeP
+            onOpenSettings: win.openSettings("home")
             // swipe up on shade closes it
             DragHandler {
                 id: shadeCloseDrag
                 target: null; xAxis.enabled: false
-                onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, 1 + translation.y / (win.height * 0.4)))
+                onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, 1 + translation.y / (root.height * 0.4)))
                 onActiveChanged: if (!active) win.shadeP = win.shadeP > 0.7 ? 1 : 0
             }
         }
         // status bar above shade too
-        StatusBar { anchors { top: parent.top; left: parent.left; right: parent.right } z: 40; visible: win.shadeP > 0.01; ink: "white" }
+        StatusBar { anchors { top: parent.top; left: parent.left; right: parent.right } z: 40; visible: win.shadeP > 0.01; ink: Theme.text }
         NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             visible: win.lockP > 0.9
-            ink: "white"
+            ink: Theme.text
             onBack: win.gesture("back")
             onHome: win.gesture("home")
             onSearch: win.gesture("search")
-            onDragged: (dy) => { if (win.page === "app") { win.appDrag = true; win.appP = Math.max(0.15, Math.min(1, 1 - dy / (win.height * 0.6))) } }
+            onDragged: (dy) => { if (win.page === "app") { win.appDrag = true; win.appP = Math.max(0.15, Math.min(1, 1 - dy / (root.height * 0.6))) } }
             onReleased: (dy, vy) => {
                 if (win.page === "app") {
                     win.appDrag = false
