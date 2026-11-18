@@ -171,7 +171,7 @@ Item {
                             color: "transparent"; border.width: 2; border.color: Theme.accent
                             Text {
                                 anchors.centerIn: parent
-                                text: row.modelData.letter; color: Theme.accent
+                                text: row.modelData.letter || ""; color: Theme.accent
                                 font.family: Theme.font; font.weight: Font.Light; font.pixelSize: 28
                             }
                         }

@@ -26,11 +26,13 @@ Item {
     function dayLabel(s) {
         if (s === todayStr) return "today"
         var d = parseD(s), t = parseD(todayStr)
+        if (isNaN(d) || isNaN(t)) return String(s)
         if (Math.round((d - t) / 86400000) === 1) return "tomorrow"
         return dayNames[d.getDay()] + " " + d.getDate() + " " + monthNames[d.getMonth()].substring(0, 3)
     }
     function longDate(s) {
         var d = parseD(s)
+        if (isNaN(d)) return String(s)
         return dayNames[d.getDay()] + " " + d.getDate() + " " + monthNames[d.getMonth()].substring(0, 3) + " " + d.getFullYear()
     }
     function timeText(ev) {
