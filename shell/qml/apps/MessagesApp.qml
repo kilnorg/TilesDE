@@ -33,10 +33,12 @@ Item {
     }
     function load() {
         var c = AppStore.load("contacts", [])
-        if (!Array.isArray(c) || c.length === 0) { c = _seedContacts(); AppStore.save("contacts", c) }
+        if (!Array.isArray(c)) c = []
+        if (c.length === 0 && Sys.demoData) { c = _seedContacts(); AppStore.save("contacts", c) }
         contacts = c
         var m = AppStore.load("messages", [])
-        if (!Array.isArray(m) || m.length === 0) {
+        if (!Array.isArray(m)) m = []
+        if (m.length === 0 && Sys.demoData) {
             var now = Date.now()
             m = [
                 { thread: "demo1", unread: 1, items: [

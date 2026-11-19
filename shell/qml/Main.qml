@@ -23,6 +23,18 @@ Window {
     // Starts on touch-up, never waits for the app: one progress value (appP) drives the shared element.
     function openApp(name, rect, launching) {
         if (name === "Settings") { openSettings(""); return }
+        wmSend("from " + Math.round(rect.x) + " " + Math.round(rect.y) + " " + Math.round(rect.width) + " " + Math.round(rect.height))
+        // installed (third-party) app: start it through the app model; its window is placed by tiles-wm
+        if (NativeApps.source(name) === "" && !launching && typeof Apps !== "undefined" && Apps) {
+            for (let i = 0; i < Apps.count; i++) {
+                const a = Apps.get(i)
+                if (a && a.name === name) {
+                    if (extPick(name)) return
+                    Apps.launch(i); launching = true
+                    break
+                }
+            }
+        }
         if (openApps.indexOf(name) < 0) openApps = openApps.concat([name])
         appName = name; appRect = rect; appLaunching = !!launching; shadeP = 0; page = "app"
         if (launching) launchTimer.restart()
@@ -72,7 +84,7 @@ Window {
     Timer {
         interval: 400; repeat: true; running: win.wmScript !== ""
         onTriggered: {
-            const t = Sys.readText("/run/user/1000/tiles-wm.json", 65536)
+            const t = Sys.readText(Sys.runtimeDir() + "/tiles-wm.json", 65536)
             if (t === "" || t === win._extRaw) return
             win._extRaw = t
             try {
@@ -83,12 +95,13 @@ Window {
                 const was = win.extShown
                 win.extWins = l; win.extShown = d.shown
                 if (d.shown > 0 && was !== d.shown && win.page === "lock") win.page = "home"
+                if (d.shown > 0 && win.appLaunching) { launchTimer.stop(); win.appLaunching = false; win.openApps = win.openApps.filter(x => x !== win.appName) }
                 if (d.shown > 0) { win.shadeP = 0; win.page = win.page === "switcher" ? "home" : win.page }
             } catch (e) {}
         }
     }
     property string _extRaw: ""
-    Timer { id: launchTimer; interval: 1600; onTriggered: if (win.appLaunching) win.gesture("home") }
+    Timer { id: launchTimer; interval: 8000; onTriggered: if (win.appLaunching) win.gesture("home") }
     
     property string page: ["shade","centre","search","apps","edit","alpha"].indexOf(StartPage) >= 0 ? "home" : StartPage
     property real lockP: StartPage === "lock" ? 0 : 1
@@ -168,6 +181,10 @@ Window {
     }
     property bool oskDismissed: false
     onFocusTargetChanged: oskDismissed = false
+    // keyboard belongs to the app when the focused field lives inside it: it rides the app frame off screen
+    function inApp(it) { while (it) { if (it === appPage) return true; it = it.parent } return false }
+    readonly property bool kbInApp: focusTarget !== null && inApp(focusTarget)
+    onAppPChanged: if (appP < 0.01 && page !== "app" && kbInApp) win.contentItem.forceActiveFocus()
 
     function gesture(name) {
         if (extShown > 0 && name !== "back") wmSend("hide")          // app windows stay running, listed in the switcher
@@ -283,16 +300,21 @@ Window {
             }
         }
 
-        // lock: swipe up
-        DragHandler {
-            id: lockDrag
-            enabled: win.page === "lock"
-            target: null; xAxis.enabled: false
-            // lock screen follows the finger 1:1 (LockScreen.y = -progress * height)
-            onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / root.height))
-            onActiveChanged: if (!active) {
-                if (win.lockP > 0.25 || centroid.velocity.y < -900) win.page = "home"
-                else { win.page = "lock"; win.lockP = 0 }
+        // lock: swipe up. Full-size pickable layer so the home screen underneath never takes the touch.
+        Item {
+            anchors.fill: parent; z: 19
+            visible: win.page === "lock"
+            DragHandler {
+                id: lockDrag
+                enabled: win.page === "lock"
+                target: null; xAxis.enabled: false; dragThreshold: 4
+                grabPermissions: PointerHandler.CanTakeOverFromAnything
+                // lock screen follows the finger 1:1 (LockScreen.y = -progress * height)
+                onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / root.height))
+                onActiveChanged: if (!active) {
+                    if (win.lockP > 0.25 || centroid.velocity.y < -900) win.page = "home"
+                    else { win.page = "lock"; win.lockP = 0 }
+                }
             }
         }
 
@@ -329,20 +351,23 @@ Window {
             target: win.focusTarget
             shown: win.focusTarget !== null && !win.oskDismissed && win.lockP > 0.9
             onHideRequested: win.oskDismissed = true
+            transform: Translate { y: win.kbInApp ? Math.max(0, Math.min(1, 1 - win.appP)) * (kb.height + 56) : 0 }
         }
         NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             visible: win.lockP > 0.9
             ink: Theme.text
             onBack: win.gesture("back")
+            onBackHeld: win.gesture("switcher")
             onHome: win.gesture("home")
             onSearch: win.gesture("search")
             onDragged: (dy) => { if (win.page === "app") { win.appDrag = true; win.appP = Math.max(0.15, Math.min(1, 1 - dy / (root.height * 0.6))) } }
             onReleased: (dy, vy) => {
                 if (win.page === "app") {
                     win.appDrag = false
-                    if (dy > 70 || vy < -900) win.gesture("home"); else win.appP = 1
-                } else if (dy > 60) { (vy < -900) ? win.gesture("home") : win.gesture("switcher") }
+                    if (dy > root.height * 0.4) win.gesture("switcher")
+                    else if (dy > 70 || vy < -900) win.gesture("home"); else win.appP = 1
+                } else if (dy > 60) { (dy > root.height * 0.4 || vy >= -900) ? win.gesture("switcher") : win.gesture("home") }
             }
         }
     }

@@ -66,7 +66,7 @@ Item {
     // ---- data provider (offline demo library) ----
     QtObject {
         id: provider
-        readonly property var lib: [
+        readonly property var lib: !Sys.demoData ? [] : [
             { id: 1, title: "Low Tide Signal", artist: "Northern Static", album: "Harbour Lights", dur: 214 },
             { id: 2, title: "Paper Lanterns", artist: "Northern Static", album: "Harbour Lights", dur: 187 },
             { id: 3, title: "Salt and Neon", artist: "Northern Static", album: "Harbour Lights", dur: 243 },
@@ -237,7 +237,8 @@ Item {
                 }
             }
             Item { width: 1; height: 8 }
-            Text { text: "demo library (offline)"; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
+            Text { visible: root.allTracks.length === 0; width: parent.width; wrapMode: Text.Wrap; text: "no music yet."; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 22 }
+            Text { visible: Sys.demoData; text: "demo library (offline)"; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
         }
 
         PivotPage {

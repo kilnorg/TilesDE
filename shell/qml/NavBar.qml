@@ -10,6 +10,7 @@ Rectangle {
     signal back
     signal home
     signal search
+    signal backHeld
     signal dragged(real dy)
     signal released(real dy, real vy)
 
@@ -19,6 +20,8 @@ Rectangle {
         property string kind: ""
         property bool held: false
         signal activated
+        signal longPressed
+        property bool _long: false
         width: root.width / 3; height: root.height
         Canvas {
             id: cv
@@ -53,10 +56,11 @@ Rectangle {
         }
         MouseArea {
             anchors.fill: parent
-            onPressed: btn.held = true
+            onPressed: { btn.held = true; btn._long = false }
             onReleased: btn.held = false
             onCanceled: btn.held = false
-            onClicked: btn.activated()
+            onPressAndHold: { btn._long = true; btn.longPressed() }       // hold back = running apps, like Windows Phone
+            onClicked: if (!btn._long) btn.activated()
         }
     }
 
@@ -65,7 +69,7 @@ Rectangle {
 
     Row {
         anchors.fill: parent
-        NavButton { id: bBack; kind: "back"; onActivated: root.back() }
+        NavButton { id: bBack; kind: "back"; onActivated: root.back(); onLongPressed: root.backHeld() }
         NavButton { id: bHome; kind: "home"; onActivated: root.home() }
         NavButton { id: bSearch; kind: "search"; onActivated: root.search() }
     }

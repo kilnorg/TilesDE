@@ -31,7 +31,7 @@ Item {
     Component.onCompleted: {
         var s = AppStore.load("mail", null)
         if (s && s.msgs) { msgs = s.msgs; sent = s.sent || []; trash = s.trash || 0; nextId = s.nextId || 1000 }
-        else { msgs = provider.seed(); save() }
+        else if (Sys.demoData) { msgs = provider.seed(); save() }
     }
     function patch(id, props) {
         msgs = msgs.map(function(m) {
@@ -167,7 +167,7 @@ Item {
                 }
             }
             Item { width: 1; height: 10 }
-            Text { text: "demo mailbox, offline · trash: " + root.trash; color: Theme.textDim
+            Text { text: (Sys.demoData ? "demo mailbox, offline · " : "offline · ") + "trash: " + root.trash; color: Theme.textDim
                 font.family: Theme.font; font.pixelSize: 16 }
         }
         PivotPage {

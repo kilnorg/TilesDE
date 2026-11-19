@@ -67,7 +67,7 @@ Item {
     Component.onCompleted: {
         var l = AppStore.load("notes", [])
         if (!Array.isArray(l)) l = []
-        if (l.length === 0) {
+        if (l.length === 0 && Sys.demoData) {
             l = [{ id: newId(), pinned: false, modified: Date.now(),
                    body: "Welcome to notes (demo note)\nThe first line is the title. Edits save automatically. Long-press a note in the list to pin or delete it." }]
             notes = l; persist()

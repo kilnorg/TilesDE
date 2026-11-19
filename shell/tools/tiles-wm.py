@@ -72,24 +72,75 @@ def place(i):
     if not r: return
     s = r["width"] / DESIGN_W
     top, bot = round(TOP * s), round(BOTTOM * s)
-    sway(f"[con_id={i}] floating enable, border none, resize set {r['width']} {r['height'] - top - bot}, "
+    sway(f"[con_id={i}] floating enable, border none, resize set width {r['width']} px height {r['height'] - top - bot} px, "
          f"move absolute position {r['x']} {r['y'] + top}")
 
+def settle(i):
+    """Clients (foot, browsers) commit their own size shortly after map and undo the first resize, so re-apply a few times."""
+    place(i)
+    for d in (0.4, 1.0, 2.2):
+        threading.Timer(d, lambda: place(i) if i in wins and i not in hidden and shown == i else None).start()
+
+fly = None       # tile rect (design units x,y,w,h) the next window opens from / closes into
+anim_gen = 0     # bumped by every show/hide: stale animations stop, so spamming open/close stays seamless
+
+def frame():
+    r = shell_rect()
+    if not r: return None
+    s = r["width"] / DESIGN_W
+    top, bot = round(TOP * s), round(BOTTOM * s)
+    return r["x"], r["y"] + top, r["width"], r["height"] - top - bot, s, r
+
+def tile_box(fr):
+    """fly rect in screen pixels (or a small centred box)."""
+    x, y, w, h, s, r = fr
+    if fly: return r["x"] + fly[0] * s, r["y"] + fly[1] * s, max(8, fly[2] * s), max(8, fly[3] * s)
+    return x + w / 2 - 20, y + h / 2 - 20, 40, 40
+
+def animate(i, a, b, dur, gen):
+    steps = max(1, int(dur / 0.022))
+    for k in range(1, steps + 1):
+        if gen != anim_gen: return False
+        e = 1 - (1 - k / steps) ** 3
+        v = [a[j] + (b[j] - a[j]) * e for j in range(4)]
+        sway(f"[con_id={i}] resize set width {max(8, round(v[2]))} px height {max(8, round(v[3]))} px, move absolute position {round(v[0])} {round(v[1])}")
+    return True
+
+def fly_in(i, gen):
+    fr = frame()
+    if not fr: place(i); return
+    a, b = tile_box(fr), fr[:4]
+    sway(f"[con_id={i}] floating enable, border none, resize set width {round(a[2])} px height {round(a[3])} px, move absolute position {round(a[0])} {round(a[1])}")
+    if animate(i, a, b, 0.26, gen) and gen == anim_gen: settle(i)
+
 def show(i):
-    global shown
+    global shown, anim_gen
     with mu:
         if i not in wins: return
-        if shown and shown != i: hide()
+        if shown and shown != i: hide(quick=True)
+        anim_gen += 1; gen = anim_gen
         if i in hidden:
             sway(f"[con_id={i}] scratchpad show"); hidden.discard(i)
-        place(i); sway(f"[con_id={i}] focus"); shown = i; save()
+        sway(f"[con_id={i}] focus"); shown = i; save()
+    threading.Thread(target=fly_in, args=(i, gen), daemon=True).start()
 
-def hide():
-    global shown
+def _fly_out(i, gen):
+    fr = frame()
+    if fr:
+        animate(i, fr[:4], tile_box(fr), 0.2, gen)
     with mu:
-        if shown in wins and shown not in hidden:
-            sway(f"[con_id={shown}] move scratchpad"); hidden.add(shown)
+        if gen == anim_gen and i in wins and i not in hidden:
+            sway(f"[con_id={i}] move scratchpad"); hidden.add(i)
+
+def hide(quick=False):
+    global shown, anim_gen
+    with mu:
+        i = shown
+        anim_gen += 1; gen = anim_gen
         shown = 0; save()
+        if i in wins and i not in hidden:
+            if quick: sway(f"[con_id={i}] move scratchpad"); hidden.add(i)
+            else: threading.Thread(target=_fly_out, args=(i, gen), daemon=True).start()
     sway("[app_id=flowde-shell] focus")
 
 def close(i):
@@ -106,7 +157,7 @@ def on_event(e):
     if c == "new" and not is_shell(n) and managed(n) and (n.get("app_id") or n.get("window_properties")):
         with mu:
             wins[i] = info(n)
-        threading.Timer(0.25, lambda: (show(i), place(i))).start()   # app_id/title settle after map
+        threading.Timer(0.25, lambda: show(i)).start()   # app_id/title settle after map
     elif c in ("title",) and i in wins:
         with mu: wins[i] = info(n); save()
     elif c == "close" and i in wins:
@@ -128,6 +179,9 @@ def commands():
             if not p: continue
             try:
                 if p[0] == "show": show(int(p[1]))
+                elif p[0] == "from":
+                    global fly
+                    fly = [float(v) for v in p[1:5]]
                 elif p[0] == "hide": hide()
                 elif p[0] == "close": close(int(p[1]))
                 elif p[0] == "closeall":

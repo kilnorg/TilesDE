@@ -80,7 +80,7 @@ Item {
         viewYear = now.getFullYear(); viewMonth = now.getMonth()
         var l = AppStore.load("calendar-events", [])
         if (!Array.isArray(l)) l = []
-        if (l.length === 0) {
+        if (l.length === 0 && Sys.demoData) {
             var tm = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
             l = [
                 { id: newId(), title: "Demo event: welcome to calendar", date: todayStr, start: "", end: "", place: "", notes: "Sample entry, tap to edit or delete." },

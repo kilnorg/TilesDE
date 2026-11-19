@@ -5,9 +5,10 @@ import "TilePresets.js" as TilePresets
 // TilesDE Start page: named tile groups (Glaze style headings, collapsible) over a 3 or 4 column grid.
 // Tiles come from TilePresets.defaultTiles(); fill = Theme.tileColor(id, colorIdx) (per-tile override or palette),
 // opacity/radius/gap/columns/labels/badges/flip speed/grain all follow Theme + Personalise live.
-// Faces: TileFaces (calendar, photo, contact, missed call, weather, music, text). Picture tiles use Theme.startPhoto
-// or a generated gradient. Edit mode (long press): tiles shrink, unpin (x) + resize buttons, drag to reorder (also across
-// groups), tap a tile to open the colour sheet (12 swatches, size, photo, unpin), headings become editable.
+// Faces: TileFaces (calendar, photo, contact, missed call, text), only from real data (LiveTiles: calendar/mail/messages/
+// reminders/clock/people/photos). A tile without data shows the plain front (glyph + label) and does not flip. Picture tiles
+// show a real photo (LiveTiles / Theme.startPhoto) or none. Edit mode (long press): tiles shrink, unpin (x) + resize buttons, drag to reorder (also across
+// groups), drag the corner arrow to resize (snaps to s/m/w/l, neighbours reflow live; tap it to cycle), tap a tile to open the colour sheet (12 swatches, size, photo, unpin), headings become editable.
 // Tap background / exitEdit() leaves. Pull-down at the top is NOT handled here (Action Centre).
 Item {
     id: root
@@ -31,6 +32,9 @@ Item {
     function exitEdit() { editing = false; dragIndex = -1; _selId = ""; refreshSel() }
     function playEnter() { _exiting = false; enterRequested() }
     function playExit() { _exiting = true; exitRequested() }
+    // rapid open/close: tiles snap straight back, no lay-down animation
+    signal snapRequested
+    function snapEnter() { _exiting = false; snapRequested() }
     function indexOfId(tid) { for (let i = 0; i < tileModel.count; i++) if (tileModel.get(i).tid === tid) return i; return -1 }
     function unpin(i) { if (i >= 0 && i < tileModel.count) { if (tileModel.get(i).tid === _selId) { _selId = ""; refreshSel() } tileModel.remove(i) } }
     // returns false when the app is already pinned
@@ -55,6 +59,17 @@ Item {
         if (i < 0 || i >= tileModel.count) return
         const s = tileModel.get(i).size
         tileModel.setProperty(i, "size", s === "small" ? "medium" : (s === "medium" ? "wide" : (s === "wide" ? "large" : "small")))
+    }
+    function unitPx() { return Theme.tileUnit(width) }
+    // nearest grid size to a pixel size (w, h)
+    function snapSize(w, h) {
+        const names = ["small", "medium", "wide", "large"]
+        let best = "small", bd = 1e12
+        for (let k = 0; k < names.length; k++) {
+            const dw = w - Theme.tileW(names[k], width), dh = h - Theme.tileH(names[k], width), d = dw * dw + dh * dh
+            if (d < bd) { bd = d; best = names[k] }
+        }
+        return best
     }
     function setSize(i, sz) { if (i >= 0 && i < tileModel.count && ["small", "medium", "wide", "large"].indexOf(sz) >= 0) tileModel.setProperty(i, "size", sz) }
     // open the colour sheet for a tile id (enters edit mode first); "" closes it
@@ -87,6 +102,7 @@ Item {
     property string _selId: ""
     property var selRow: null                  // plain copy of the selected model row (for the sheet bindings)
     property int dragIndex: -1
+    property bool resizingNow: false
     property var dragCell: null
     property point dragVp: Qt.point(0, 0)      // pointer in viewport coords
     property point dragGrab: Qt.point(0, 0)    // pointer offset from tile centre
@@ -101,41 +117,46 @@ Item {
     readonly property var glyphs: ["phone", "message", "mail", "calendar", "clock", "photos", "music", "maps", "notes", "files", "weather",
         "terminal", "store", "camera", "settings", "people", "browser", "wallet", "noxal", "video"]
 
-    // Built-in apps get their text from LiveTiles (real app data); other tiles keep the labelled placeholders below.
-    function faceFor(id) {
-        const d = new Date(), lt = LiveTiles.get(id)
-        const img = lt ? lt.imageSource : ""
-        if (lt) {
-            const big = lt.big !== "" ? lt.big : (lt.badge > 0 ? String(lt.badge) : "")
-            switch (id) {
-            case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: lt.title === "" ? "No upcoming events" : lt.title + ", " + lt.subtitle, img: img }
-            default: return { face: img !== "" ? "photo" : "text", big: big, line1: lt.title, line2: lt.subtitle, img: img }
-            }
-        }
+    // A face exists only for real data from LiveTiles. No data (or nothing worth showing) = plain front, no flip.
+    function hasLive(id, lt) {
+        if (!lt) return false
         switch (id) {
-        case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: "No upcoming events", img: "" }
-        case "weather": return { face: "weather", big: "22°", line1: "Sunny", line2: "H 24°  L 16°", img: "" }
-        case "photos": return { face: "photo", big: "", line1: "Yesterday", line2: "42 new photos", img: "" }
-        case "people": return { face: "contact", big: "", line1: "Sam", line2: "Sent you a photo", img: "" }
-        case "phone": return { face: "missed", big: "2", line1: "Missed call", line2: "Sam, 09:41", img: "" }
-        case "music": return { face: "music", big: "", line1: "Slow Tide", line2: "Paper Lanterns", img: "" }
-        case "store": return { face: "text", big: "", line1: "Updates", line2: "5 apps ready", img: "" }
-        default: return { face: "text", big: "", line1: "", line2: "", img: "" }
+        case "calendar": return true                       // today's date is always real
+        case "clock": return lt.subtitle !== ""            // only with a real alarm
+        case "photos": return lt.imageSource !== ""
+        case "people": return lt.title !== ""
+        default: return lt.badge > 0 || lt.big !== ""
+        }
+    }
+    function faceFor(id) {
+        const d = new Date(), lt = LiveTiles.get(id), none = { face: "text", big: "", line1: "", line2: "", img: "" }
+        if (!hasLive(id, lt)) return none
+        const big = lt.big !== "" ? lt.big : (lt.badge > 0 ? String(lt.badge) : "")
+        switch (id) {
+        case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: lt.title === "" ? "No upcoming events" : lt.title + ", " + lt.subtitle, img: "" }
+        case "photos": return { face: "photo", big: "", line1: lt.title, line2: lt.subtitle, img: lt.imageSource }
+        case "people": return { face: "contact", big: "", line1: lt.title, line2: lt.subtitle, img: "" }
+        default: return { face: "text", big: big, line1: lt.title, line2: lt.subtitle, img: lt.imageSource }
         }
     }
     // push fresh LiveTiles data into the existing rows
+    // (only touches rows whose face data changed; faces never affect the layout, so no relayout per row)
+    property bool _faceBatch: false
     function refreshFaces() {
+        _faceBatch = true
         for (let i = 0; i < tileModel.count; i++) {
-            const r = tileModel.get(i), lt = LiveTiles.get(r.tid), f = faceFor(r.tid)
-            tileModel.set(i, { face: f.face, big: f.big, line1: f.line1, line2: f.line2, img: f.img, hasData: !!lt, badge: lt ? lt.badge : r.badge })
+            const r = tileModel.get(i), lt = LiveTiles.get(r.tid), f = faceFor(r.tid), hd = hasLive(r.tid, lt), bd = lt ? lt.badge : 0
+            if (r.face !== f.face || r.big !== f.big || r.line1 !== f.line1 || r.line2 !== f.line2 || r.img !== f.img || r.hasData !== hd || r.badge !== bd)
+                tileModel.set(i, { face: f.face, big: f.big, line1: f.line1, line2: f.line2, img: f.img, hasData: hd, badge: bd })
         }
+        _faceBatch = false
     }
     Connections { target: LiveTiles; function onChanged() { root.refreshFaces() } }
     // every row carries the same roles (ListModel requirement)
     function mkRow(t) {
         const f = faceFor(t.id), lt = LiveTiles.get(t.id)
         return { tid: t.id, name: t.label, label: t.label, glyph: t.glyph, size: t.size, group: t.group || "", colorIdx: t.color | 0,
-                 live: !!t.live, picture: !!t.picture, badge: lt ? lt.badge : (t.badge | 0), face: f.face, big: f.big, line1: f.line1, line2: f.line2, img: f.img, hasData: !!lt }
+                 live: !!t.live, picture: !!t.picture, badge: lt ? lt.badge : 0, face: f.face, big: f.big, line1: f.line1, line2: f.line2, img: f.img, hasData: hasLive(t.id, lt) }
     }
 
     function refreshSel() {
@@ -220,7 +241,7 @@ Item {
         function onRowsInserted() { root.computeLayout() }
         function onRowsRemoved() { root.computeLayout() }
         function onRowsMoved() { root.computeLayout() }
-        function onDataChanged() { root.computeLayout() }
+        function onDataChanged() { if (!root._faceBatch) root.computeLayout() }
     }
     Connections {
         target: Theme
@@ -324,7 +345,7 @@ Item {
         bottomMargin: root.bottomInset + (root.selRow ? sheet.height : 0)
         contentWidth: width
         contentHeight: content.height
-        interactive: root.dragIndex < 0
+        interactive: root.dragIndex < 0 && !root.resizingNow
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         Component.onCompleted: contentY = -topMargin
@@ -386,8 +407,19 @@ Item {
                     required property bool hasData
 
                     readonly property var lay: (root.layout.length > index) ? root.layout[index] : null
-                    readonly property color fillC: Theme.tileColor(cell.tid, cell.colorIdx)
-                    readonly property bool liveOn: cell.live || (cell.hasData && cell.size !== "small") || ((cell.face === "missed" || cell.face === "music") && cell.size !== "small")
+                    // fill colour is cached and re-synced imperatively: a colour pick repaints only the tile whose colour changed
+                    // (a binding on Personalise.tileColors would re-evaluate and repaint all tiles)
+                    property color fillC: "transparent"
+                    function syncColour() { const c = Theme.tileColor(cell.tid, cell.colorIdx); if (c.toString() !== cell.fillC.toString()) cell.fillC = c }
+                    onColorIdxChanged: syncColour()
+                    Connections { target: Personalise; function onTileColorsChanged() { cell.syncColour() } }
+                    Connections { target: Theme; function onTilePaletteChanged() { cell.syncColour() } }
+                    readonly property bool liveOn: cell.hasData && cell.size !== "small"
+                    readonly property string photoPath: cell.img !== "" ? cell.img : Theme.startPhoto
+                    readonly property bool hasPhoto: cell.picture && photoPath !== "" && (photoPath.indexOf("://") >= 0 || photoPath.indexOf("qrc:") === 0 || (typeof Sys !== "undefined" && Sys.exists(photoPath)))
+                    property bool resizing: false
+                    property real rw: 0
+                    property real rh: 0
                     property bool dragging: false
                     property real dragX: 0
                     property real dragY: 0
@@ -427,8 +459,8 @@ Item {
 
                     x: dragging ? dragX : (lay ? lay.x : 0)
                     y: dragging ? dragY : (lay ? lay.y : 0)
-                    width: lay ? lay.w : 0
-                    height: lay ? lay.h : 0
+                    width: resizing ? rw : (lay ? lay.w : 0)
+                    height: resizing ? rh : (lay ? lay.h : 0)
                     // collapse / expand: tiles tuck under their group heading while fading, then the groups below glide up
                     property real showP: (lay !== null && !lay.hidden) ? 1 : 0
                     Behavior on showP { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.InOutCubic } }
@@ -439,8 +471,8 @@ Item {
                     scale: (root.editing ? (dragging ? 1.04 : 0.88) : 1) * (0.9 + 0.1 * showP)
                     Behavior on x { enabled: !cell.dragging && !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                     Behavior on y { enabled: !cell.dragging && !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-                    Behavior on width { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                    Behavior on height { enabled: !Theme.reduceMotion && cell.enterP >= 1; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                    Behavior on width { enabled: !Theme.reduceMotion && cell.enterP >= 1 && !cell.resizing; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                    Behavior on height { enabled: !Theme.reduceMotion && cell.enterP >= 1 && !cell.resizing; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     Behavior on scale { enabled: !Theme.reduceMotion; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                     transform: Rotation {
                         origin.x: -cell.x; origin.y: cell.height / 2
@@ -450,8 +482,8 @@ Item {
 
                     function playIn() {
                         if (Theme.reduceMotion) { enterP = 1; return }
-                        enterAnim.stop()
-                        enterP = 0
+                        enterAnim.stop(); exitAnim.stop()
+                        if (enterP >= 0.999) enterP = 0     // replay; otherwise turn back from wherever the exit got to
                         enterAnim.restart()
                     }
                     function playOut() {
@@ -459,16 +491,17 @@ Item {
                         enterAnim.stop()
                         exitAnim.restart()
                     }
-                    Component.onCompleted: playIn()
+                    Component.onCompleted: { syncColour(); playIn() }
                     Connections {
                         target: root
                         function onEnterRequested() { cell.playIn() }
                         function onExitRequested() { cell.playOut() }
+                        function onSnapRequested() { enterAnim.stop(); exitAnim.stop(); cell.enterP = 1 }
                     }
                     SequentialAnimation {
                         id: enterAnim
                         PauseAnimation { duration: cell.lay ? Math.min(600, cell.lay.row * 70 + cell.lay.col * 35) : 0 }
-                        NumberAnimation { target: cell; property: "enterP"; from: 0; to: 1; duration: Theme.turnstileMs + 80; easing.type: Easing.OutCubic }
+                        NumberAnimation { target: cell; property: "enterP"; to: 1; duration: Theme.turnstileMs + 80; easing.type: Easing.OutCubic }
                     }
                     SequentialAnimation {
                         id: exitAnim
@@ -484,12 +517,12 @@ Item {
                         glyph: cell.glyph
                         live: cell.liveOn
                         accent: cell.fillC
-                        picture: cell.picture
+                        picture: cell.hasPhoto
                         index: cell.index
                         screenW: root.width
                         flat: root.editing
                         flipEnabled: root.flipsOn && !root.editing && !root._exiting && cell.enterP >= 1
-                        glyphScale: (cell.face === "photo" || cell.face === "contact") && cell.picture ? 0.8 : 1
+                        glyphScale: cell.hasPhoto ? 0.8 : 1
                         onClicked: (r) => {
                             if (root.editing || Date.now() - root._editAt < 400) return
                             root.launched(cell.name, r, false)
@@ -503,12 +536,16 @@ Item {
                             root.enterEdit()
                         }
 
-                        // picture layer (photo tiles): generated gradient or Theme.startPhoto under the glyph
+                        // picture layer (photo tiles): a real photo (LiveTiles / Theme.startPhoto) under the glyph, else nothing
                         frontLayer: [
-                            Loader {
+                            Image {
+                                readonly property string p: cell.photoPath
                                 anchors.fill: parent
-                                active: cell.picture
-                                sourceComponent: TileFaces { face: "scene"; seed: root.hashOf(cell.tid) }
+                                visible: cell.hasPhoto && status === Image.Ready
+                                source: cell.hasPhoto ? (p.indexOf("://") >= 0 || p.indexOf("qrc:") === 0 ? p : "file://" + p) : ""
+                                asynchronous: true
+                                fillMode: Image.PreserveAspectCrop
+                                sourceSize.width: 600; sourceSize.height: 600
                             },
                             // numeric badge: lives on the front face so it tilts/flips with the tile
                             Text {
@@ -590,7 +627,38 @@ Item {
                                 ctx.stroke()
                             }
                         }
-                        MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: root.resize(cell.index) }
+                        // drag: continuous resize with snapping to s/m/w/l (live reflow); a plain tap still cycles
+                        MouseArea {
+                            id: sizeMa
+                            anchors.fill: parent; anchors.margins: -10
+                            preventStealing: true
+                            property point p0
+                            property real w0: 0
+                            property real h0: 0
+                            property bool moved: false
+                            function pt(m) { return sizeMa.mapToItem(content, m.x, m.y) }
+                            onPressed: (m) => {
+                                p0 = pt(m); w0 = cell.width; h0 = cell.height; moved = false
+                            }
+                            onPositionChanged: (m) => {
+                                if (!pressed) return
+                                const p = pt(m)
+                                if (!moved) {
+                                    if (Math.abs(p.x - p0.x) + Math.abs(p.y - p0.y) < 10) return
+                                    moved = true
+                                    cell.rw = w0; cell.rh = h0; cell.resizing = true; root.resizingNow = true
+                                }
+                                // the tile is drawn at editing scale: undo it so the corner follows the finger
+                                const k = 1 / 0.88, cw = root.width - 2 * Theme.pageMargin
+                                cell.rw = Math.max(root.unitPx(), Math.min(cw, w0 + (p.x - p0.x) * k))
+                                cell.rh = Math.max(root.unitPx(), Math.min(cw, h0 + (p.y - p0.y) * k))
+                                const sz = root.snapSize(cell.rw, cell.rh)
+                                if (sz !== cell.size) root.setSize(cell.index, sz)
+                            }
+                            onReleased: { if (moved) end(); else root.resize(cell.index) }
+                            onCanceled: end()
+                            function end() { cell.resizing = false; root.resizingNow = false; moved = false }
+                        }
                     }
                 }
             }
@@ -655,6 +723,7 @@ Item {
     Rectangle {
         id: sheet
         readonly property bool open: root.editing && root.selRow !== null
+        readonly property string curCol: Theme.hasTileColor(root._selId) ? Qt.color(Personalise.tileColors[root._selId]).toString() : ""   // evaluated once, not per swatch
         width: parent.width
         height: sheetCol.height + 28
         y: open ? parent.height - root.bottomInset - height : parent.height
@@ -688,7 +757,7 @@ Item {
                         required property var modelData
                         width: swGrid.sw; height: swGrid.sw
                         color: modelData
-                        border.width: Theme.hasTileColor(root._selId) && Qt.color(Personalise.tileColors[root._selId]).toString() === Qt.color(modelData).toString() ? 3 : 0
+                        border.width: sheet.curCol !== "" && sheet.curCol === Qt.color(modelData).toString() ? 3 : 0
                         border.color: Theme.text
                         MouseArea { anchors.fill: parent; onClicked: Personalise.setTileColor(root._selId, Qt.color(parent.modelData).toString()) }
                     }

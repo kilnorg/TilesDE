@@ -62,6 +62,26 @@ QtObject {
             }
         })
         set("clock", best ? { title: Qt.formatTime(best.at, "hh:mm"), subtitle: (best.label || "Next alarm") + ", " + Qt.formatDate(best.at, "ddd") } : { title: "No alarm", subtitle: "" })
+        // people: a stored contact (favourite first)
+        const real = _arr("contacts").filter(c => c.name)
+        const pc = real.filter(c => c.fav)[0] || real[0]
+        set("people", pc ? { title: pc.name, subtitle: (pc.numbers && pc.numbers.length ? pc.numbers[0].number : "") || pc.email || "" } : { title: "", subtitle: "" })
+        _photos()
+    }
+
+    // photos: newest picture under ~/Pictures (real files only; rescans at most every 5 minutes)
+    property double _photosAt: 0
+    function _photos() {
+        const nowMs = Date.now()
+        if (nowMs - _photosAt < 300000 && _photosAt > 0) return
+        _photosAt = nowMs
+        let list = []
+        if (typeof Sys !== "undefined") {
+            const dir = Sys.home() + "/Pictures"
+            if (Sys.exists(dir)) list = _list(Sys.listDir(dir, ["jpg", "jpeg", "png", "webp"], true, 300))
+        }
+        list.sort((a, b) => b.modified - a.modified)
+        set("photos", list.length ? { title: "Photos", subtitle: list.length + (list.length === 1 ? " photo" : " photos"), imageSource: list[0].path } : { title: "", subtitle: "" })
     }
 
     property Connections _notifs: Connections { target: Services.notifications; function onCountChanged() { root._soon.restart() } }

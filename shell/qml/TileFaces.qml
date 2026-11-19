@@ -6,8 +6,8 @@ import FlowShell
 //   "photo"    picture + caption                               "contact"  picture + avatar disc + name + message
 //   "missed"   phone glyph + count + "missed call" text        "weather"  temperature, condition, high/low, sun glyph
 //   "music"    album art + equaliser + track / artist          "scene"    only the generated picture (no text)
-// Picture source: Theme.startPhoto (file path or url) when set, else a generated gradient + sun/hill pattern from
-// Theme.tilePalette (no external images). `seed` varies the pattern per tile. Respects Theme.reduceMotion (music bars).
+// Picture source: imageSource / Theme.startPhoto (real file path or url). Only the "scene" face (page wallpaper) falls back to a
+// generated gradient; photo and contact faces show no picture when there is none. `seed` varies the pattern. Respects Theme.reduceMotion (music bars).
 Item {
     id: root
     property string face: "text"
@@ -70,7 +70,7 @@ Item {
                 id: base
                 anchors.fill: parent
                 radius: Theme.tileRadius
-                visible: img.status !== Image.Ready
+                visible: root.face === "scene" && img.status !== Image.Ready   // generated gradient only as the wallpaper; photo/contact faces never fake a picture
                 readonly property var pal: Theme.tilePalette
                 readonly property color c0: pal[(root.seed) % pal.length]
                 readonly property color c1: pal[(root.seed + 1) % pal.length]

@@ -24,11 +24,25 @@ Item {
     property bool shrink: false                      // swipe-up-to-home drag: card scales down instead of sliding
     visible: p > 0.005
 
+    // Windows Phone launch: the page grows out of the tapped tile (rect `from`), accent plate fading to the app.
+    readonly property bool zoom: !shrink && !Theme.reduceMotion && from.width > 8 && from.height > 8 && from.width < sw * 1.5
+    readonly property real f: Math.max(0, Math.min(1, p))
+    readonly property real zx: zoom ? from.width / sw + (1 - from.width / sw) * f : 1
+    readonly property real zy: zoom ? from.height / sh + (1 - from.height / sh) * f : 1
+
     PageSlide {
         id: page
         width: root.sw; height: root.sh
-        p: root.shrink ? 1 : root.p
+        p: (root.shrink || root.zoom) ? 1 : root.p
         scale: root.shrink ? 0.5 + 0.5 * Math.max(0, Math.min(1, root.p)) : 1
+        opacity: root.zoom ? Math.min(1, root.f / 0.1) : 1
+        edgeShadow: !root.zoom
+        transform: [
+            Scale { origin.x: 0; origin.y: 0; xScale: root.zx; yScale: root.zy },
+            Translate { x: root.zoom ? root.from.x * (1 - root.f) : 0; y: root.zoom ? root.from.y * (1 - root.f) : 0 }
+        ]
+        // accent plate: looks like the tile while small, fades out as the app takes over
+        Rectangle { anchors.fill: parent; z: 2000; color: Theme.accent; visible: root.zoom; opacity: 1 - Math.min(1, root.f / 0.55) }
 
         Rectangle { anchors.fill: parent; color: Theme.pageBg }
         MouseArea { anchors.fill: parent }

@@ -15,8 +15,17 @@ static bool startApp(const QString &prog, const QStringList &args) {
     p.setProcessEnvironment(e); p.setProgram(prog); p.setArguments(args);
     return p.startDetached();
 }
+bool Sys::demoData() const {
+#ifdef TILES_DEMO_DATA
+    return qEnvironmentVariable("TILES_DEMO") != "0";
+#else
+    return qEnvironmentVariable("TILES_DEMO") == "1";
+#endif
+}
 bool Sys::launch(const QString &prog, const QStringList &args) const { return startApp(prog, args); }
 bool Sys::openUrl(const QString &url) const { return startApp("xdg-open", {url}); }
+QString Sys::runtimeDir() const { return qEnvironmentVariable("XDG_RUNTIME_DIR", QStringLiteral("/tmp")); }
+
 QString Sys::home() const { return QDir::homePath(); }
 bool Sys::exists(const QString &path) const { return QFileInfo::exists(path); }
 QString Sys::readText(const QString &path, int maxBytes) const {

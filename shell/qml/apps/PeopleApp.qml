@@ -61,7 +61,8 @@ Item {
     }
     function load() {
         var c = AppStore.load("contacts", [])
-        if (!Array.isArray(c) || c.length === 0) { c = _seed(); AppStore.save("contacts", c) }
+        if (!Array.isArray(c)) c = []
+        if (c.length === 0 && Sys.demoData) { c = _seed(); AppStore.save("contacts", c) }
         contacts = c
     }
     function persist() { AppStore.save("contacts", contacts) }

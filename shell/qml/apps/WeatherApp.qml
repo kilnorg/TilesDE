@@ -9,11 +9,11 @@ Item {
     signal closeRequested
 
     // ---- state (persisted under AppStore "weather-places") ----
-    property var places: ["Barcelona", "London", "Tokyo"]
+    property var places: Sys.demoData ? ["Barcelona", "London", "Tokyo"] : []
     property string unit: "C"
     property int selected: 0
     readonly property string city: places.length > 0 ? places[Math.max(0, Math.min(selected, places.length - 1))] : ""
-    readonly property var now: city !== "" ? provider.current(city) : null
+    readonly property var now: Sys.demoData && city !== "" ? provider.current(city) : null
     readonly property var days: city !== "" ? provider.daily(city, 7) : []
     readonly property var hours: city !== "" ? provider.hourly(city, 24) : []
 
@@ -61,7 +61,7 @@ Item {
             for (var i = 0; i < cities.length; ++i) if (cities[i].name === city) return cities[i]
             return { name: city, base: 15, amp: 7 }
         }
-        function builtinCities() { return cities.map(function(c) { return c.name }) }
+        function builtinCities() { return !Sys.demoData ? [] : cities.map(function(c) { return c.name }) }
         // day record for offset d (0 = today)
         function dayRec(city, d) {
             var ci = info(city), r = rng(hash(city) ^ Math.imul(dayNumber(d), 2654435761))
@@ -122,7 +122,7 @@ Item {
             Text {
                 visible: root.now === null
                 width: parent.width; wrapMode: Text.Wrap
-                text: "no places saved. add a city on the places page."
+                text: Sys.demoData ? "no places saved. add a city on the places page." : "no weather source yet. nothing to show."
                 color: Theme.textDim; font.family: Theme.font; font.pixelSize: 22
             }
             Column {
