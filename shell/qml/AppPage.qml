@@ -2,8 +2,7 @@ import QtQuick
 import FlowShell
 import "apps/index.js" as NativeApps
 
-// Built-in app page with turnstile transition: the page swings about its left edge in Y, angle -90 deg (p = 0)
-// to 0 (p = 1). Solid page, accent title bar, a few mock blocks per app name. Real data comes later.
+// Built-in app page: slides in from the right over the page beneath (PageSlide; p = 0 off-screen .. 1 settled). Solid page, accent title bar, a few mock blocks per app name. Real data comes later.
 Item {
     id: root
     property string name: ""
@@ -22,17 +21,14 @@ Item {
     readonly property string nativeSrc: NativeApps.source(name)
     property real sw: 540
     property real sh: 1170
+    property bool shrink: false                      // swipe-up-to-home drag: card scales down instead of sliding
     visible: p > 0.005
-    opacity: Math.min(1, p * 4)
 
-    Item {
+    PageSlide {
         id: page
         width: root.sw; height: root.sh
-        transform: Rotation {
-            origin.x: 0; origin.y: root.sh / 2
-            axis { x: 0; y: 1; z: 0 }
-            angle: -90 * (1 - Math.max(0, Math.min(1, root.p)))
-        }
+        p: root.shrink ? 1 : root.p
+        scale: root.shrink ? 0.5 + 0.5 * Math.max(0, Math.min(1, root.p)) : 1
 
         Rectangle { anchors.fill: parent; color: Theme.pageBg }
         MouseArea { anchors.fill: parent }

@@ -3,7 +3,7 @@ import FlowShell
 import "settings2/index.js" as More
 
 // Settings app: SettingsHome plus a navigation stack of sub-pages with turnstile transitions
-// (page swings about its left edge; the covered page fades and tilts). Respects Theme.reduceMotion.
+// (new page slides in over the previous one, which shifts left and dims; see PageSlide). Respects Theme.reduceMotion.
 // API: open(name) name = "start+theme" | "lock screen" | "app:<tileId>" | "applications" | "system";
 //      back() pops (emits closed() at root); goHome(); page (top page name, read-only); topInset; signal closed().
 Item {
@@ -11,7 +11,7 @@ Item {
     property real topInset: 36
     readonly property string page: _top
     property string _top: "home"
-    property int live: 1          // stack entries not leaving (covered = below the topmost live one)
+    property int live: 1          // stack entries not leaving
     property int homeIndex: 0     // pivot page of the home screen: 0 system, 1 applications
     property bool _busy: false
     signal closed
@@ -21,7 +21,9 @@ Item {
         name = String(name)
         if (name === "system" || name === "applications") { goHome(); homeIndex = name === "system" ? 0 : 1; return }
         if (name === "" || name === "home") { goHome(); return }
-        if (_find(name) >= 0 || _busy) return
+        var f = _find(name)
+        if (f >= 0 && !stack.get(f).leaving) return
+        if (f >= 0) stack.remove(f)        // same page still sliding out: drop it so back/open stay consistent
         if (stack.count > 1) goHome(true)
         stack.append({ name: name, leaving: false })
         live = stack.count
@@ -47,6 +49,7 @@ Item {
     function _moreSource(name) { for (var i = 0; i < More.entries.length; ++i) if (More.entries[i].key === name) return More.entries[i].component; return "" }
     function _drop(name) { var i = _find(name); if (i > 0) stack.remove(i) }
 
+    clip: true
     focus: true
     Keys.onEscapePressed: back()
     Keys.onBackPressed: back()
@@ -59,31 +62,44 @@ Item {
     Component { id: lockC; SettingsLockPage {} }
     Component { id: appC; SettingsAppPage {} }
 
+    // iOS-style back-swipe peek: the topmost page follows the finger (f = 0..1 of the width), the page below peeks.
+    readonly property int depth: live
+    property int _dragIdx: -1
+    function dragBack(f) {
+        const i = live - 1
+        if (i < 1) return
+        const it = rep.itemAt(i); if (!it) return
+        it.dragging = true; _dragIdx = i; it.p = 1 - f
+    }
+    function endBack(commit) {
+        const it = rep.itemAt(_dragIdx); _dragIdx = -1
+        if (!it) return
+        it.dragging = false
+        if (commit) back(); else it.p = 1
+    }
+
     Repeater {
+        id: rep
         model: stack
-        delegate: Item {
+        delegate: PageSlide {
             id: d
             required property int index
             required property string name
             required property bool leaving
-            readonly property bool covered: index < root.live - 1
-            property real p: 0
-            property real cover: covered ? 1 : 0
+            property bool dragging: false
             width: root.width; height: root.height
-            visible: p > 0.005 && cover < 0.995
-            opacity: Math.min(1, p * 4) * (1 - cover)
-            Behavior on p { enabled: d.index > 0 && !Theme.reduceMotion
-                NumberAnimation { duration: Theme.turnstileMs; easing.type: Easing.OutCubic } }
-            Behavior on cover { enabled: !Theme.reduceMotion
+            p: index === 0 ? 1 : 0
+            visible: p > 0.005 && cover < 0.999
+            Behavior on p { enabled: d.index > 0 && !d.dragging && !Theme.reduceMotion
                 NumberAnimation { duration: Theme.turnstileMs; easing.type: Easing.OutCubic } }
             Component.onCompleted: p = 1
             onLeavingChanged: if (leaving) p = 0
-            onPChanged: if (leaving && p <= 0.001) Qt.callLater(root._drop, d.name)
-            transform: Rotation {
-                origin.x: 0; origin.y: d.height / 2
-                axis { x: 0; y: 1; z: 0 }
-                angle: -90 * (1 - Math.max(0, Math.min(1, d.p))) + 40 * d.cover
+            onPChanged: {
+                // page below is covered exactly as far as this page has entered
+                const b = rep.itemAt(index - 1); if (b) b.cover = p
+                if (leaving && p <= 0.001) Qt.callLater(root._drop, d.name)
             }
+            Component.onDestruction: { const b = rep.itemAt(index - 1); if (b) b.cover = 0 }
             Rectangle { anchors.fill: parent; color: Theme.pageBg }
             MouseArea { anchors.fill: parent }
             Item {

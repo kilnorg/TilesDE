@@ -6,13 +6,18 @@ Item {
     id: root
     property real progress: 0          // 0 = locked, 1 = unlocked (slid away)
     property date now: new Date()
-    property int mailCount: 3
-    property int messageCount: 2
-    property int calendarCount: 1
+    // live counts: the notification model (org.freedesktop.Notifications) plus the apps' own unread counts (LiveTiles)
+    function _count(app, tile) {
+        const n = Services.notifications.counts[app] || 0, lt = tile ? LiveTiles.get(tile) : null
+        return Math.max(n, lt ? lt.badge : 0)
+    }
+    readonly property int mailCount: _count("mail", "mail")
+    readonly property int messageCount: _count("messages", "message")
+    readonly property int calendarCount: _count("calendar", "")
     property real bounce: 0            // hint lift in px, animated while idle
     Timer { interval: 5000; running: root.visible; repeat: true; onTriggered: root.now = new Date() }
-    opacity: 1 - progress * 0.9
-    y: -progress * height * 0.55 - bounce
+    // slides up with the finger (progress = fraction of height); never fades. Opaque wallpaper copy covers the home screen beneath.
+    y: Math.min(0, -progress * height) - bounce
     visible: progress < 0.999
 
     // bounce hint: lifts 24px, settles, every 6s while idle
@@ -23,6 +28,8 @@ Item {
         NumberAnimation { target: root; property: "bounce"; to: 24; duration: 260; easing.type: Easing.OutCubic }
         NumberAnimation { target: root; property: "bounce"; to: 0; duration: 650; easing.type: Easing.OutBounce }
     }
+
+    ShaderEffectSource { anchors.fill: parent; z: -2; sourceItem: Theme.backdropItem; live: root.visible; hideSource: false }
 
     // subtle scrim so light text reads on any wallpaper
     Rectangle { anchors.fill: parent; z: -1
@@ -43,7 +50,8 @@ Item {
         anchors { left: parent.left; leftMargin: 28; bottom: hint.top; bottomMargin: 24 }
         spacing: 22
         Repeater {
-            model: [ { g: "mail", n: root.mailCount }, { g: "message", n: root.messageCount }, { g: "calendar", n: root.calendarCount } ]
+            model: [ { g: "mail", n: root.mailCount }, { g: "message", n: root.messageCount }, { g: "calendar", n: root.calendarCount },
+                     { g: "phone", n: root._count("phone", "phone") } ]
             delegate: Row {
                 required property var modelData
                 spacing: 10

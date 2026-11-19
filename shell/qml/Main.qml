@@ -16,9 +16,10 @@ Window {
     property rect appRect: Qt.rect(240, 560, 62, 62)
     property bool appLaunching: false
     property bool appDrag: false
+    property bool appSwipe: false      // left-edge back swipe in progress (finger drives appP)
     property real appP: 0
     // response ~0.4 s, damping ratio ~0.85 (see docs/mobile-motion.md)
-    Behavior on appP { enabled: !win.appDrag && !Theme.reduceMotion; SpringAnimation { spring: 4.2; damping: 0.38; epsilon: 0.001; mass: 1 } }
+    Behavior on appP { enabled: !win.appDrag && !win.appSwipe && !Theme.reduceMotion; SpringAnimation { spring: 4.2; damping: 0.38; epsilon: 0.001; mass: 1 } }
     // Starts on touch-up, never waits for the app: one progress value (appP) drives the shared element.
     function openApp(name, rect, launching) {
         if (name === "Settings") { openSettings(""); return }
@@ -170,7 +171,7 @@ Window {
 
     function gesture(name) {
         if (extShown > 0 && name !== "back") wmSend("hide")          // app windows stay running, listed in the switcher
-        if (name === "back") { if (page !== "lock" || kb.shown) backStack(); return }
+        if (name === "back") { if (page !== "lock" || kb.shown || shadeP > 0.5) backStack(); return }
         if (page === "lock" && name !== "shade" && name !== "qs") return
         if (overlay !== "" && name === "home") { overlay = ""; return }
         if (settingsOpen && (name === "home" || name === "switcher")) closeSettings()
@@ -229,7 +230,8 @@ Window {
             anchors.topMargin: 0
             scale: Theme.tiles ? (1 - 0.06 * win.appP) : (0.96 + 0.04 * win.lockP * (1 - win.switchP * 0.6)) * (1 - 0.06 * win.appP)
             topInset: 28; bottomInset: 56; kbH: kb.visibleH
-            opacity: win.page === "switcher" ? 0.0 : win.lockP
+            opacity: win.page === "switcher" ? 0.0 : 1      // lock screen is opaque and slides off, revealing this
+            transform: Translate { x: win.appDrag ? 0 : -0.3 * root.width * win.appP }   // shifts left under a sliding app page
             // hidden under a full-screen Settings/controls layer: 3D tile flips otherwise poke through it
             visible: win.overlay === "" && !(win.settingsOpen && settings.opacity > 0.99)
             dim: 0.28 * win.appP
@@ -245,7 +247,7 @@ Window {
             onClosedAll: { win.openApps = []; win.wmSend("closeall"); win.page = "home" }
             onClosedOne: (n) => { const w = win.extWins.find(o => o._n === n); if (w) win.wmSend("close " + w.id); else win.openApps = win.openApps.filter(x => x !== n) }
         }
-        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; kbH: kb.visibleH; z: 15; onBack: win.gesture("home") }
+        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; kbH: kb.visibleH; z: 15; shrink: win.appDrag; onBack: win.gesture("home") }
         SettingsApp {
             id: settings
             anchors.fill: parent; anchors.bottomMargin: 56 + kb.visibleH; z: 16
@@ -265,19 +267,36 @@ Window {
         }
         LockScreen { id: lock; anchors.fill: parent; progress: win.lockP }
 
+        // left-edge back swipe: current page follows the finger, the previous one peeks beneath
+        EdgeBackGesture {
+            id: edgeBack
+            z: 18; span: root.width
+            anchors { left: parent.left; top: parent.top; topMargin: 60; bottom: parent.bottom; bottomMargin: 56 }
+            enabled: win.overlay === "" && win.shadeP < 0.05 && !kb.shown && win.lockP > 0.9
+                     && (win.settingsOpen ? settings.depth > 1 : win.page === "app")
+            onMoved: (f) => { if (win.settingsOpen) settings.dragBack(f); else { win.appSwipe = true; win.appP = 1 - f } }
+            onFinished: (commit) => {
+                if (win.settingsOpen) { settings.endBack(commit); return }
+                win.appSwipe = false
+                if (commit && !appPage.systemBack()) win.gesture("home")
+                else if (win.page === "app") win.appP = 1       // cancelled, or the app closed an inner view instead
+            }
+        }
+
         // lock: swipe up
         DragHandler {
             id: lockDrag
             enabled: win.page === "lock"
             target: null; xAxis.enabled: false
-            onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / (root.height * 0.5)))
+            // lock screen follows the finger 1:1 (LockScreen.y = -progress * height)
+            onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / root.height))
             onActiveChanged: if (!active) {
-                if (win.lockP > 0.35 || centroid.velocity.y < -900) win.page = "home"
+                if (win.lockP > 0.25 || centroid.velocity.y < -900) win.page = "home"
                 else { win.page = "lock"; win.lockP = 0 }
             }
         }
 
-        StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: win.page === "lock" ? "white" : Theme.text }
+        StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: win.lockP < 0.5 ? "white" : Theme.text }
         // top-edge pull for shade
         Item {
             z: 21; anchors { top: parent.top; left: parent.left; right: parent.right } height: 44

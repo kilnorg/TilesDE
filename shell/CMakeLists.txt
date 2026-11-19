@@ -13,7 +13,7 @@ qt_add_executable(flowde-shell src/main.cpp src/Services.cpp src/Services.h src/
 set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qml/StatusBar.qml
   qml/GestureBar.qml qml/LockScreen.qml qml/HomeScreen.qml qml/AppSwitcher.qml qml/Shade.qml
   qml/AppIcon.qml qml/GlassIcon.qml qml/AppPage.qml qml/Toggle.qml qml/SliderRow.qml
-  qml/MetroTile.qml qml/TileGlyph.qml qml/TileGallery.qml qml/StartScreen.qml qml/AllApps.qml qml/AlphaJump.qml qml/NavBar.qml qml/TilePresets.js
+  qml/MetroTile.qml qml/TileGlyph.qml qml/TileGallery.qml qml/StartScreen.qml qml/AllApps.qml qml/AlphaJump.qml qml/NavBar.qml qml/PageSlide.qml qml/EdgeBackGesture.qml qml/TilePresets.js
   qml/TileFaces.qml qml/TileGroupHeader.qml qml/LiveTiles.qml
   qml/Pivot.qml qml/PivotPage.qml qml/MetroToggle.qml qml/MetroDropdown.qml qml/TilesKeyboard.qml qml/MetroButton.qml qml/MetroTextField.qml
   qml/MetroListRow.qml qml/MetroSlider.qml qml/MetroColorGrid.qml qml/MetroSectionHeader.qml qml/AppBar.qml qml/ControlsGallery.qml
