@@ -26,8 +26,10 @@ Item {
         property string label: ""
         property string glyph: ""
         property bool active: false
+        property bool avail: true      // false: hardware missing, tile dimmed and inert
         signal toggled
-        Toggle { id: tg; anchors.fill: parent; glyph: qt.glyph; active: qt.active; onToggled: qt.toggled() }
+        opacity: avail ? 1 : 0.4
+        Toggle { id: tg; anchors.fill: parent; glyph: qt.glyph; active: qt.active; enabled: qt.avail; onToggled: qt.toggled() }
         Text {
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 8; rightMargin: 6; bottomMargin: 6 }
             text: qt.label.toUpperCase(); elide: Text.ElideRight; maximumLineCount: 2; wrapMode: Text.Wrap
@@ -46,8 +48,8 @@ Item {
         readonly property real tw: (width - 3 * Theme.tileGap) / 4
         Row {
             spacing: Theme.tileGap
-            QTile { width: top.tw; height: top.tw; label: Services.wifi ? "Wi-Fi" : "Wi-Fi off"; glyph: "wifi"; active: Services.wifi; onToggled: Services.wifi = !Services.wifi }
-            QTile { width: top.tw; height: top.tw; label: Services.bluetooth ? "Bluetooth" : "Not connected"; glyph: "bluetooth"; active: Services.bluetooth; onToggled: Services.bluetooth = !Services.bluetooth }
+            QTile { width: top.tw; height: top.tw; avail: Services.wifiAvailable; label: !Services.wifiAvailable ? "No Wi-Fi" : (Services.wifi ? (Services.wifiName || "Wi-Fi") : "Wi-Fi off"); glyph: "wifi"; active: Services.wifi && Services.wifiAvailable; onToggled: Services.wifi = !Services.wifi }
+            QTile { width: top.tw; height: top.tw; avail: Services.bluetoothAvailable; label: !Services.bluetoothAvailable ? "No Bluetooth" : (Services.bluetooth ? "Bluetooth" : "Bluetooth off"); glyph: "bluetooth"; active: Services.bluetooth && Services.bluetoothAvailable; onToggled: Services.bluetooth = !Services.bluetooth }
             QTile { width: top.tw; height: top.tw; label: "Rotation lock"; glyph: "rotate"; active: Services.rotationLock; onToggled: Services.rotationLock = !Services.rotationLock }
             QTile { width: top.tw; height: top.tw; label: "Quiet"; glyph: "moon"; active: Services.dnd; onToggled: Services.dnd = !Services.dnd }
         }
@@ -62,7 +64,7 @@ Item {
                 spacing: Theme.tileGap
                 QTile { width: top.tw; height: top.tw; label: "Airplane mode"; glyph: "plane"; active: Services.airplane; onToggled: Services.airplane = !Services.airplane }
                 QTile { width: top.tw; height: top.tw; label: Theme.dark ? "Dark" : "Light"; glyph: "sun"; active: Theme.dark; onToggled: Theme.dark = !Theme.dark }
-                QTile { width: top.tw; height: top.tw; label: "Sound"; glyph: "sound"; active: Services.volume > 0.01; onToggled: Services.volume = (Services.volume > 0.01 ? 0 : 0.45) }
+                QTile { width: top.tw; height: top.tw; label: "Sound"; glyph: "sound"; avail: Services.volumeAvailable; active: Services.volume > 0.01; onToggled: Services.volume = (Services.volume > 0.01 ? 0 : 0.45) }
                 QTile { width: top.tw; height: top.tw; label: "Motion"; glyph: "motion"; active: !Services.reduceMotion; onToggled: Services.reduceMotion = !Services.reduceMotion }
             }
         }
@@ -72,7 +74,10 @@ Item {
                 text: root.expanded ? "less" : "more"; color: Theme.textDim; font.pixelSize: 12; font.family: Theme.font
                 MouseArea { anchors.fill: parent; anchors.margins: -12; onClicked: root.expanded = !root.expanded } }
         }
-        SliderRow { width: parent.width; height: 48; glyph: "sun"; value: Services.brightness; onMoved: (v) => Services.brightness = v }
+        SliderRow { width: parent.width; height: 48; glyph: "sun"; value: Services.brightness; onMoved: (v) => Services.brightness = v
+            enabled: Services.brightnessAvailable; opacity: enabled ? 1 : 0.4 }
+        SliderRow { width: parent.width; height: 48; glyph: "sound"; value: Services.volume; onMoved: (v) => Services.volume = v
+            enabled: Services.volumeAvailable; opacity: enabled ? 1 : 0.4 }
     }
 
     Item {
@@ -111,6 +116,8 @@ Item {
             required property string title
             required property string body
             required property string time
+            required property int urgency
+            readonly property int appCount: Services.notifications.counts[String(app).toLowerCase()] || 1
             width: nl.width
             height: card.height
             Rectangle {
@@ -118,13 +125,14 @@ Item {
                 width: dl.width; height: txt.implicitHeight + 20
                 color: "transparent"
                 opacity: 1 - Math.min(1, Math.abs(x) / (dl.width * 0.8))
+                Rectangle { visible: dl.urgency >= 2; width: 4; height: parent.height - 12; y: 6; color: Theme.accent }
                 Column {
                     id: txt
                     x: 4; y: 10; width: parent.width - 8; spacing: 8
                     Row { spacing: 14
                         Rectangle { width: 44; height: 44; radius: Theme.tileRadius; color: Theme.accent
                             TileGlyph { anchors.centerIn: parent; size: 26; stroke: 2.2; name: root.glyphFor(dl.app); color: Theme.onColor(Theme.accent) } }
-                        Text { text: dl.app; color: Theme.text; anchors.verticalCenter: parent.verticalCenter
+                        Text { text: dl.app + (dl.appCount > 1 ? "  " + dl.appCount : ""); color: Theme.text; anchors.verticalCenter: parent.verticalCenter
                             font.pixelSize: 26; font.family: Theme.font; font.weight: Theme.fontLight } }
                     Row { width: parent.width
                         Text { width: parent.width - tm.implicitWidth - 8; text: dl.title + (dl.body ? ": " + dl.body : ""); elide: Text.ElideRight

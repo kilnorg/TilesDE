@@ -27,6 +27,8 @@ QtObject {
     function _p2(n) { return (n < 10 ? "0" : "") + n }
     function _ds(d) { return d.getFullYear() + "-" + _p2(d.getMonth() + 1) + "-" + _p2(d.getDate()) }
 
+    function _nc(app) { return Services.notifications.counts[app] || 0 }
+
     function refresh() {
         const now = new Date(), today = _ds(now), nowKey = today + " " + _p2(now.getHours()) + ":" + _p2(now.getMinutes())
         // calendar: next upcoming event (all-day events count for today)
@@ -35,13 +37,16 @@ QtObject {
         set("calendar", ev ? { title: ev.title, subtitle: (ev.date === today ? "" : ev.date.slice(5) + " ") + (ev.start || "all day") } : { title: "", subtitle: "" })
         // mail: unread count + newest unread subject
         const ms = AppStore.load("mail", null), un = _list(ms ? ms.msgs : null).filter(m => !m.read).sort((a, b) => b.ts - a.ts)
-        set("mail", { title: un.length ? un[0].subject : "Inbox", subtitle: un.length ? un[0].from : "No unread", badge: un.length, big: un.length ? un.length : "" })
+        set("mail", { title: un.length ? un[0].subject : "Inbox", subtitle: un.length ? un[0].from : "No unread", badge: Math.max(un.length, _nc("mail")), big: un.length ? un.length : "" })
         // messages: unread total + newest unread thread
         const names = {}; _arr("contacts").forEach(c => names[c.id] = c.name)
         const th = _arr("messages").filter(t => (t.unread | 0) > 0)
         let n = 0; th.forEach(t => n += t.unread | 0)
         const last = th.length ? th[0] : null, li = last && last.items && last.items.length ? last.items[last.items.length - 1] : null
-        set("message", { title: last ? (names[last.thread] || last.thread) : "Messages", subtitle: li ? li.text : "No unread", badge: n, big: n ? n : "" })
+        set("message", { title: last ? (names[last.thread] || last.thread) : "Messages", subtitle: li ? li.text : "No unread", badge: Math.max(n, _nc("messages")), big: n ? n : "" })
+        // phone: missed-call notifications posted by the dialer (app name "Phone")
+        const pn = _nc("phone"), N = Services.notifications
+        set("phone", { title: pn ? N.latestTitle("phone") : "Phone", subtitle: pn ? N.latestBody("phone") : "No missed calls", badge: pn, big: pn ? pn : "" })
         // reminders: open items due today or overdue
         const rd = _arr("reminders").filter(r => !r.done && r.due && r.due <= today)
         set("reminders", { title: rd.length ? rd[0].title : "Reminders", subtitle: rd.length ? rd.length + " due today" : "Nothing due", badge: rd.length, big: rd.length ? rd.length : "" })
@@ -59,6 +64,7 @@ QtObject {
         set("clock", best ? { title: Qt.formatTime(best.at, "hh:mm"), subtitle: (best.label || "Next alarm") + ", " + Qt.formatDate(best.at, "ddd") } : { title: "No alarm", subtitle: "" })
     }
 
+    property Connections _notifs: Connections { target: Services.notifications; function onCountChanged() { root._soon.restart() } }
     property Timer _tick: Timer { interval: 60000; running: true; repeat: true; onTriggered: root.refresh() }
     property Timer _soon: Timer { interval: 400; onTriggered: root.refresh() }
     Component.onCompleted: {

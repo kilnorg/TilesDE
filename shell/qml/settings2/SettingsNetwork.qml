@@ -46,8 +46,8 @@ Item {
             MetroListRow {
                 width: parent.width
                 glyph: "browser"
-                title: Services.airplane ? "airplane mode" : (Services.wifi ? "connected" : "wi-fi off")
-                subtitle: "signal " + Services.signal + " of 4"
+                title: !Services.wifiAvailable ? "no wi-fi hardware" : (Services.airplane ? "airplane mode" : (Services.wifi ? (Services.wifiName || "not connected") : "wi-fi off"))
+                subtitle: Services.wifiAvailable ? "signal " + Services.signal + " of 4" : "bluetooth " + (Services.bluetoothAvailable ? "available" : "not available")
                 usage: Services.signal / 4
                 usageColor: Theme.accent
             }

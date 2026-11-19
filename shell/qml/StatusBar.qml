@@ -18,13 +18,13 @@ Item {
             spacing: 2; anchors.verticalCenter: parent.verticalCenter
             Repeater { model: 4
                 Rectangle { width: 3; height: 4 + index * 3; anchors.bottom: parent.bottom
-                    color: root.ink; opacity: (Services.airplane ? false : index < Services.signal) ? 1 : 0.3 } }
+                    color: root.ink; opacity: (Services.airplane || !Services.wifiAvailable ? false : index < Services.signal) ? 1 : 0.3 } }
         }
         // wifi: three arcs
         Canvas {
             width: 16; height: 12; anchors.verticalCenter: parent.verticalCenter
             property color ink: root.ink
-            property bool on: Services.wifi && !Services.airplane
+            property bool on: Services.wifi && !Services.airplane && Services.wifiAvailable
             onInkChanged: requestPaint(); onOnChanged: requestPaint()
             onPaint: {
                 const c = getContext("2d"); c.clearRect(0, 0, width, height)
@@ -40,6 +40,7 @@ Item {
         spacing: 10
         // battery
         Row {
+            visible: Services.batteryAvailable
             spacing: 3; anchors.verticalCenter: parent.verticalCenter
             Text { visible: true; text: Services.battery + "%"; color: root.ink; font.pixelSize: 12; font.weight: Theme.fontLight
                 font.family: Theme.font; anchors.verticalCenter: parent.verticalCenter }

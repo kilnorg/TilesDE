@@ -8,7 +8,7 @@
 // Indices cycle 0..3 so 3-colour palettes still alternate (index 3 wraps to 0).
 
 var tiles = [
-    { id: "phone",    label: "Phone",    glyph: "phone",    size: "small",  group: "",             color: 0, live: false, picture: false, badge: 2 },
+    { id: "phone",    label: "Phone",    glyph: "phone",    size: "small",  group: "",             color: 0, live: false, picture: false, badge: 0 },
     { id: "message",  label: "Messages", glyph: "message",  size: "small",  group: "",             color: 1, live: false, picture: false, badge: 4 },
     { id: "camera",   label: "Camera",   glyph: "camera",   size: "small",  group: "",             color: 2, live: false, picture: false, badge: 0 },
     { id: "music",    label: "Music",    glyph: "music",    size: "small",  group: "",             color: 3, live: false, picture: false, badge: 0 },
