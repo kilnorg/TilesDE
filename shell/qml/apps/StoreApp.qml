@@ -1,155 +1,235 @@
 import QtQuick
 import FlowShell
 
-// Store: read-only apt front end. Curated built-in package list; install/upgrade runs in a foot terminal with sudo.
-// Only package names from `catalog` are ever passed to a command, never user input.
+// Store: Debian apt (apt-cache / apt-get / dpkg) + Flathub (appstream API v2, flatpak --user). All work is async in StoreBackend (src/StoreBackend.*).
+// Offline: apt keeps working, Flathub falls back to the API cache in ~/.cache/tilesde/store; icons and screenshots are cached there too.
 Item {
     id: root
     property real topInset: 36
     signal closeRequested
 
-    readonly property var catalog: [
-        { name: "Firefox ESR", pkg: "firefox-esr", cat: "internet", desc: "Web browser with extended support releases." },
-        { name: "Chromium", pkg: "chromium", cat: "internet", desc: "Open source web browser." },
-        { name: "Thunderbird", pkg: "thunderbird", cat: "internet", desc: "Email, calendar and news client." },
-        { name: "Transmission", pkg: "transmission-gtk", cat: "internet", desc: "Simple BitTorrent client." },
-        { name: "Newsboat", pkg: "newsboat", cat: "internet", desc: "Terminal RSS and Atom feed reader." },
-        { name: "VLC", pkg: "vlc", cat: "media", desc: "Plays almost any audio or video format." },
-        { name: "mpv", pkg: "mpv", cat: "media", desc: "Minimal, scriptable media player." },
-        { name: "cmus", pkg: "cmus", cat: "media", desc: "Fast terminal music player." },
-        { name: "Audacity", pkg: "audacity", cat: "media", desc: "Record and edit audio." },
-        { name: "FFmpeg", pkg: "ffmpeg", cat: "media", desc: "Convert and process audio and video." },
-        { name: "GIMP", pkg: "gimp", cat: "graphics", desc: "Full-featured image editor." },
-        { name: "Inkscape", pkg: "inkscape", cat: "graphics", desc: "Vector graphics editor." },
-        { name: "Krita", pkg: "krita", cat: "graphics", desc: "Digital painting and illustration." },
-        { name: "ImageMagick", pkg: "imagemagick", cat: "graphics", desc: "Command line image conversion and editing." },
-        { name: "LibreOffice", pkg: "libreoffice", cat: "office", desc: "Documents, spreadsheets and presentations." },
-        { name: "Evince", pkg: "evince", cat: "office", desc: "PDF and document viewer." },
-        { name: "Calcurse", pkg: "calcurse", cat: "office", desc: "Terminal calendar and to-do manager." },
-        { name: "KeePassXC", pkg: "keepassxc", cat: "utilities", desc: "Offline password manager." },
-        { name: "htop", pkg: "htop", cat: "utilities", desc: "Interactive process viewer." },
-        { name: "Midnight Commander", pkg: "mc", cat: "utilities", desc: "Two-pane terminal file manager." },
-        { name: "tmux", pkg: "tmux", cat: "utilities", desc: "Terminal multiplexer." },
-        { name: "Neofetch", pkg: "neofetch", cat: "utilities", desc: "Show system information in the terminal." },
-        { name: "Git", pkg: "git", cat: "development", desc: "Distributed version control." },
-        { name: "Geany", pkg: "geany", cat: "development", desc: "Small and fast text editor / IDE." },
-        { name: "Vim", pkg: "vim", cat: "development", desc: "Modal text editor." },
-        { name: "Python 3", pkg: "python3", cat: "development", desc: "Python interpreter." },
-        { name: "Node.js", pkg: "nodejs", cat: "development", desc: "JavaScript runtime." },
-        { name: "SuperTux", pkg: "supertux", cat: "games", desc: "Classic 2D jump and run platformer." },
-        { name: "Extreme Tux Racer", pkg: "extremetuxracer", cat: "games", desc: "Race a penguin down snowy slopes." },
-        { name: "GNU Chess", pkg: "gnuchess", cat: "games", desc: "Chess engine for the terminal." }
-    ]
-    readonly property var categories: ["all", "internet", "media", "graphics", "office", "utilities", "development", "games"]
-    readonly property var featuredPkgs: ["firefox-esr", "vlc", "gimp"]
+    StoreBackend { id: be }
 
-    property var installed: ({})      // pkg -> bool
+    // ---- state
     property string query: ""
     property string category: "all"
-    property string curPkg: ""
-    property bool detailOpen: false
-
-    property var upgradable: []       // [{name, text}]
-    property string updStatus: "tap check to look for updates"
+    property int token: 1
+    property var aptItems: []
+    property var flatItems: []
+    property bool flatMore: false
+    property int flatPage: 1
+    property string flatState: "loading"      // loading | ok | cached | offline
+    property bool aptDone: false
+    property var featApt: []
+    property var featFlat: []
+    property var instItems: []
+    property bool instLoaded: false
+    property var updItems: []
+    property string updNote: "tap check to look for updates"
     property bool updChecking: false
+    property bool detailOpen: false
+    property var cur: ({})                    // item shown in the detail sheet (summary data, then replaced by full details)
+    property bool detailLoading: false
+    property string detailError: ""
+    property bool confirmRemove: false
+    property string toast: ""
+    readonly property var categories: ["all", "internet", "media", "graphics", "office", "utilities", "development", "games", "system", "education", "science"]
+    readonly property var merged: aptItems.concat(flatItems)
+    readonly property var featured: featFlat.slice(0, 2).concat(featApt.slice(0, 1))
 
-    function entry(pkg) { for (var i = 0; i < catalog.length; ++i) if (catalog[i].pkg === pkg) return catalog[i]; return null }
-    function isInstalled(pkg) { return installed[pkg] === true }
-    function refreshInstalled() {
-        var m = {}
-        for (var i = 0; i < catalog.length; ++i) {
-            var r = Sys.run("dpkg-query", ["-W", "-f=${Status}", catalog[i].pkg], 3000)
-            m[catalog[i].pkg] = !!r && String(r.out).indexOf("install ok installed") >= 0
+    function key(src, id) { return src + ":" + id }
+    function isInstalled(src, id) { return be.installedKeys[src + ":" + id] !== undefined }
+    function sourceLabel(src) { return src === "apt" ? "debian apt" : "flathub" }
+    function reload() {
+        token++
+        aptItems = []; flatItems = []; flatMore = false; flatPage = 1; flatState = "loading"; aptDone = false
+        if (query.trim().length >= 2) be.search(token, query.trim()); else be.browse(token, category, 1)
+    }
+    function loadMore() { if (flatMore) be.browse(token, category, flatPage + 1) }
+    function openDetail(item) {
+        cur = item; detailOpen = true; detailLoading = true; detailError = ""; confirmRemove = false
+        be.details(item.source, item.id)
+    }
+    function say(t) { toast = t; toastTimer.restart() }
+    function doInstall() { be.install(cur.source, cur.id) }
+    function doRemove() {
+        if (!confirmRemove) { confirmRemove = true; confirmTimer.restart(); return }
+        confirmRemove = false; be.remove(cur.source, cur.id)
+    }
+
+    Component.onCompleted: { be.refresh(); be.browse(0, "all", 1); reload() }
+    Timer { id: searchTimer; interval: 400; onTriggered: root.reload() }
+    Timer { id: toastTimer; interval: 5000; onTriggered: root.toast = "" }
+    Timer { id: confirmTimer; interval: 4000; onTriggered: root.confirmRemove = false }
+
+    Connections {
+        target: be
+        function onResults(tok, source, items, page, hasMore, offline) {
+            if (tok === 0) {
+                if (source === "apt") root.featApt = items; else root.featFlat = items
+                return
+            }
+            if (tok !== root.token) return
+            if (source === "apt") { root.aptItems = items; root.aptDone = true; return }
+            root.flatItems = page > 1 ? root.flatItems.concat(items) : items
+            root.flatPage = page; root.flatMore = hasMore
+            root.flatState = offline ? "cached" : "ok"
         }
-        installed = m
-    }
-    function visibleApps(q, cat) {
-        q = q.trim().toLowerCase()
-        return catalog.filter(function(a) {
-            if (cat !== "all" && a.cat !== cat) return false
-            return q === "" || a.name.toLowerCase().indexOf(q) >= 0 || a.pkg.indexOf(q) >= 0 || a.desc.toLowerCase().indexOf(q) >= 0
-        })
-    }
-    property var shown: visibleApps(query, category)
-
-    function installCmd(pkg) { return "sudo apt install -y " + pkg }
-    function runInTerminal(cmd) {
-        // cmd is built only from catalog package names or fixed strings
-        if (!Sys.launch("foot", ["-e", "sh", "-c", cmd + "; echo; printf 'done. press enter to close'; read _x"]))
-            updStatus = "could not start foot terminal"
-    }
-    function openDetail(pkg) { curPkg = pkg; detailOpen = true }
-
-    function checkUpdates() {
-        updChecking = true
-        updStatus = "checking..."
-        checkTimer.start()
-    }
-    function doCheck() {
-        var r = Sys.run("apt", ["list", "--upgradable"], 8000)
-        updChecking = false
-        if (!r || r.code !== 0) { upgradable = []; updStatus = "could not read updates (apt unavailable or timed out)"; return }
-        var out = [], lines = String(r.out).split("\n")
-        for (var i = 0; i < lines.length; ++i) {
-            var l = lines[i].trim()
-            if (l === "" || l.indexOf("Listing") === 0 || l.indexOf("WARNING") === 0 || l.indexOf("/") < 0) continue
-            var name = l.split("/")[0]
-            var parts = l.split(" ")
-            var ver = parts.length > 1 ? parts[1] : ""
-            var from = l.indexOf("[upgradable from:") >= 0 ? l.substring(l.indexOf("from:") + 5).replace("]", "").trim() : ""
-            out.push({ name: name, text: from !== "" ? from + " > " + ver : ver })
+        function onSearchFailed(tok, source, msg) {
+            if (tok === root.token && source === "flathub") root.flatState = "offline"
         }
-        upgradable = out
-        updStatus = out.length === 0 ? "everything is up to date" : out.length + (out.length === 1 ? " update available" : " updates available")
+        function onDetailsReady(d) {
+            if (!root.detailOpen || d.id !== root.cur.id || d.source !== root.cur.source) return
+            var m = {}
+            for (var k in root.cur) m[k] = root.cur[k]
+            for (var j in d) if (d[j] !== "" && d[j] !== undefined) m[j] = d[j]
+            root.cur = m; root.detailLoading = false
+        }
+        function onDetailsFailed(src, id, msg) {
+            if (root.detailOpen && id === root.cur.id) { root.detailLoading = false; root.detailError = msg }
+        }
+        function onInstalledListReady(items) { root.instItems = items; root.instLoaded = true }
+        function onUpdatesReady(items, refreshed, note) {
+            root.updChecking = false; root.updItems = items
+            var base = items.length === 0 ? "everything is up to date" : items.length + (items.length === 1 ? " update available" : " updates available")
+            root.updNote = note !== "" ? base + ". " + note : base
+        }
+        function onOpFinished(ok, title, msg) {
+            root.say(ok ? title.replace("ing ", "ed ").replace("updated", "updated") + " - done" : title + " failed: " + msg)
+            root.confirmRemove = false
+            if (ok && title.indexOf("updating") === 0) be.checkUpdates(false)
+        }
     }
-
-    Component.onCompleted: startTimer.start()
-    Timer { id: startTimer; interval: 60; onTriggered: root.refreshInstalled() }
-    Timer { id: checkTimer; interval: 80; onTriggered: root.doCheck() }
 
     focus: true
     function back() { if (detailOpen) detailOpen = false; else closeRequested() }
     Keys.onEscapePressed: back()
     Keys.onBackPressed: back()
 
+    // ---- shared pieces
+    component RemoteImage: Item {
+        id: ri
+        property string url: ""
+        property var backend: be
+        property int fillMode: Image.PreserveAspectFit
+        property int decodeW: 256
+        readonly property bool ready: img.status === Image.Ready
+        function load() {
+            if (url === "") { img.source = ""; return }
+            var p = ri.backend.cachedImage(url)
+            img.source = p !== "" ? "file://" + p : ""
+        }
+        onUrlChanged: load()
+        Component.onCompleted: load()
+        Connections {
+            target: ri.backend
+            function onImageReady(u, p) { if (u === ri.url) img.source = "file://" + p }
+        }
+        Image {
+            id: img
+            anchors.fill: parent
+            fillMode: ri.fillMode
+            asynchronous: true
+            sourceSize.width: ri.decodeW
+            smooth: true
+        }
+    }
+
+    component AppIcon: Item {
+        id: ai
+        property var item: ({})
+        property real size: 56
+        width: size; height: size
+        Rectangle {
+            anchors.fill: parent; color: Theme.accent
+            visible: !icon.ready
+            Text {
+                anchors.centerIn: parent
+                text: ai.item && ai.item.name ? String(ai.item.name).charAt(0).toUpperCase() : "?"
+                color: Theme.onColor(Theme.accent); font.family: Theme.font; font.pixelSize: ai.size * 0.5; font.weight: Theme.fontLight
+            }
+        }
+        RemoteImage { id: icon; anchors.fill: parent; url: ai.item && ai.item.icon ? ai.item.icon : "" }
+    }
+
+    component StoreRow: Item {
+        id: sr
+        property var item: ({})
+        signal clicked
+        width: parent ? parent.width : 360; height: 76
+        opacity: ra.pressed ? 0.6 : 1
+        AppIcon { id: sic; item: sr.item; size: 56; y: 10 }
+        Column {
+            x: 72; y: 8; width: parent.width - 72 - (tr.visible ? tr.width + 10 : 0)
+            Text {
+                width: parent.width; elide: Text.ElideRight; text: sr.item.name || ""
+                color: Theme.text; font.family: Theme.font; font.pixelSize: 24; font.weight: Theme.fontLight
+            }
+            Text {
+                width: parent.width; elide: Text.ElideRight
+                text: root.sourceLabel(sr.item.source) + (sr.item.summary ? "  ·  " + sr.item.summary : "")
+                color: Theme.textDim; font.family: Theme.font; font.pixelSize: 18
+            }
+        }
+        Text {
+            id: tr
+            visible: text !== ""
+            anchors.right: parent.right; y: 12
+            text: root.isInstalled(sr.item.source, sr.item.id) ? "installed" : ""
+            color: Theme.accent; font.family: Theme.font; font.pixelSize: 18
+        }
+        MouseArea { id: ra; anchors.fill: parent; onClicked: sr.clicked() }
+    }
+
+    component Hint: Text {
+        width: parent ? parent.width : 300
+        wrapMode: Text.WordWrap
+        color: Theme.textDim; font.family: Theme.font; font.pixelSize: 20
+    }
+
     Pivot {
         id: pivot
         y: root.topInset
         width: parent.width
-        height: parent.height - root.topInset
+        height: parent.height - root.topInset - (opBar.visible ? opBar.height : 0)
         caption: "store"
 
         PivotPage {
             title: "featured"
+            Hint {
+                visible: be.escalation === "none"
+                text: "no passwordless sudo/pkexec here: installs open in a terminal instead."
+            }
+            Hint { visible: root.flatState === "offline"; text: "offline: flathub unavailable, showing debian apt only." }
             Repeater {
-                model: root.featuredPkgs
+                model: root.featured
                 Item {
                     id: tile
-                    required property string modelData
+                    required property var modelData
                     required property int index
-                    readonly property var e: root.entry(modelData)
                     readonly property color tint: index === 0 ? Theme.accent : (index === 1 ? Qt.darker(Theme.accent, 1.5) : Qt.darker(Theme.accent, 2.2))
                     width: parent.width; height: 188
                     Rectangle {
                         width: parent.width; height: 180; color: parent.tint
                         opacity: fma.pressed ? 0.7 : 1
                         Column {
-                            x: 16; y: 14; width: parent.width - 32; spacing: 4
+                            x: 16; y: 14; width: parent.width - 32 - (tileIcon.ready ? 96 : 0); spacing: 4
                             Text {
-                                width: parent.width; elide: Text.ElideRight; text: tile.e ? tile.e.name.toLowerCase() : ""
+                                width: parent.width; elide: Text.ElideRight; text: tile.modelData.name.toLowerCase()
                                 color: Theme.onColor(tile.tint)
                                 font.family: Theme.font; font.pixelSize: 44; font.weight: Theme.fontLight
                             }
                             Text {
                                 width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
-                                text: tile.e ? tile.e.desc : ""
+                                text: tile.modelData.summary
                                 color: Theme.onColor(tile.tint); opacity: 0.85
                                 font.family: Theme.font; font.pixelSize: 22
                             }
                         }
+                        RemoteImage { id: tileIcon; x: parent.width - 112; y: 16; width: 96; height: 96; url: tile.modelData.icon || ""; decodeW: 192 }
                         Text {
                             x: 16; y: parent.height - 36
-                            text: root.isInstalled(tile.modelData) ? "installed" : "not installed"
+                            text: root.sourceLabel(tile.modelData.source) + (root.isInstalled(tile.modelData.source, tile.modelData.id) ? "  ·  installed" : "")
                             color: Theme.onColor(tile.tint); opacity: 0.85
                             font.family: Theme.font; font.pixelSize: 20
                         }
@@ -157,19 +237,19 @@ Item {
                     }
                 }
             }
-            Text {
-                width: parent.width; topPadding: 8; wrapMode: Text.WordWrap
-                text: "Kiln Store backend (repo.mandrusia.tech) is coming. for now this lists a curated set of apt packages."
-                color: Theme.textDim; font.family: Theme.font; font.pixelSize: 18
+            Hint {
+                visible: root.featured.length === 0
+                text: "loading..."
             }
+            Hint { topPadding: 8; text: "sources: debian apt (this system) and flathub. open the apps tab to search and browse categories." }
         }
 
         PivotPage {
             title: "apps"
             MetroTextField {
                 width: parent.width
-                placeholder: "search apps"
-                onEdited: root.query = text
+                placeholder: "search apps and packages"
+                onEdited: { root.query = text; searchTimer.restart() }
             }
             Item { width: 1; height: 10 }
             Flickable {
@@ -195,26 +275,46 @@ Item {
                                 color: parent.sel ? Theme.onColor(Theme.accent) : Theme.text
                                 font.family: Theme.font; font.pixelSize: 21; font.weight: Theme.fontLight
                             }
-                            MouseArea { id: cha; anchors.fill: parent; onClicked: root.category = parent.modelData }
+                            MouseArea { id: cha; anchors.fill: parent; onClicked: { root.category = parent.modelData; root.reload() } }
                         }
                     }
                 }
             }
             Item { width: 1; height: 12 }
-            Text {
-                visible: root.shown.length === 0
-                width: parent.width; wrapMode: Text.WordWrap
+            Hint { visible: root.flatState === "offline"; text: "offline: flathub unreachable. showing debian apt only." }
+            Hint { visible: root.flatState === "cached"; text: "offline: flathub results come from the local cache." }
+            Hint { visible: root.flatState === "loading" || !root.aptDone; text: "loading..." }
+            Hint {
+                visible: root.aptDone && root.flatState !== "loading" && root.merged.length === 0
                 text: "no matching apps"
-                color: Theme.textDim; font.family: Theme.font; font.pixelSize: 24; font.weight: Theme.fontLight
+                font.pixelSize: 24; font.weight: Theme.fontLight
             }
             Repeater {
-                model: root.shown
-                MetroListRow {
+                model: root.merged
+                StoreRow {
                     required property var modelData
-                    title: modelData.name
-                    subtitle: modelData.cat + "  ·  " + modelData.desc
-                    trailing: root.isInstalled(modelData.pkg) ? "installed" : ""
-                    onClicked: root.openDetail(modelData.pkg)
+                    item: modelData
+                    onClicked: root.openDetail(modelData)
+                }
+            }
+            MetroButton {
+                visible: root.flatMore
+                width: parent.width; text: "more from flathub"
+                onClicked: root.loadMore()
+            }
+        }
+
+        PivotPage {
+            title: "installed"
+            Hint { visible: !root.instLoaded; text: "loading..." }
+            Hint { visible: root.instLoaded && root.instItems.length === 0; text: "nothing installed yet" }
+            Hint { visible: root.instItems.length > 0; text: root.instItems.length + " apps (user-installed apt packages and flatpaks)" }
+            Repeater {
+                model: root.instItems
+                StoreRow {
+                    required property var modelData
+                    item: modelData
+                    onClicked: root.openDetail(modelData)
                 }
             }
         }
@@ -223,25 +323,76 @@ Item {
             title: "updates"
             Text {
                 width: parent.width; wrapMode: Text.WordWrap; bottomPadding: 12
-                text: root.updStatus
+                text: root.updChecking ? "checking..." : root.updNote
                 color: Theme.textDim; font.family: Theme.font; font.pixelSize: 24; font.weight: Theme.fontLight
             }
             Row {
                 spacing: 12
-                MetroButton { text: "check"; enabled2: !root.updChecking; onClicked: root.checkUpdates() }
-                MetroButton { text: "upgrade all"; accentFill: true; enabled2: root.upgradable.length > 0
-                    onClicked: root.runInTerminal("sudo apt upgrade") }
+                MetroButton { text: "check"; enabled2: !root.updChecking && !be.busy; onClicked: { root.updChecking = true; be.checkUpdates(true) } }
+                MetroButton {
+                    text: "update all"; accentFill: true; enabled2: root.updItems.length > 0 && !be.busy
+                    onClicked: { if (be.escalation === "none") be.openInTerminal("apt", "", "upgrade"); else be.upgradeAll() }
+                }
             }
             Item { width: 1; height: 14 }
             Repeater {
-                model: root.upgradable
+                model: root.updItems
                 MetroListRow {
                     required property var modelData
                     title: modelData.name
-                    subtitle: modelData.text
+                    subtitle: root.sourceLabel(modelData.source) + "  ·  " + modelData.text
+                    onClicked: root.openDetail({ source: modelData.source, id: modelData.id, name: modelData.name, summary: "", icon: "" })
                 }
             }
         }
+    }
+
+    // ---- progress strip for running install/remove/upgrade
+    Item {
+        id: opBar
+        visible: be.busy
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        height: 84
+        Rectangle { anchors.fill: parent; color: Theme.pageBg }
+        Rectangle { width: parent.width; height: 2; color: Theme.textDim; opacity: 0.4 }
+        Text {
+            x: 18; y: 10; width: parent.width - 36 - 110; elide: Text.ElideRight
+            text: be.opTitle + (be.opProgress >= 0 ? "  " + Math.round(be.opProgress * 100) + "%" : "")
+            color: Theme.text; font.family: Theme.font; font.pixelSize: 22; font.weight: Theme.fontLight
+        }
+        Text {
+            x: 18; y: 40; width: parent.width - 36; elide: Text.ElideRight; text: be.opLine
+            color: Theme.textDim; font.family: Theme.font; font.pixelSize: 17
+        }
+        Text {
+            anchors.right: parent.right; anchors.rightMargin: 18; y: 10; text: "cancel"
+            color: Theme.accent; font.family: Theme.font; font.pixelSize: 22
+            MouseArea { anchors.fill: parent; anchors.margins: -12; onClicked: be.cancel() }
+        }
+        Rectangle {
+            id: track
+            x: 18; y: 70; width: parent.width - 36; height: 6; color: Theme.textDim; opacity: 0.35
+        }
+        Rectangle {
+            id: fill
+            x: 18; y: 70; height: 6; color: Theme.accent
+            width: be.opProgress >= 0 ? track.width * be.opProgress : track.width * 0.25
+            SequentialAnimation on x {
+                running: opBar.visible && be.opProgress < 0 && !Theme.reduceMotion
+                loops: Animation.Infinite
+                NumberAnimation { from: 18; to: 18 + track.width * 0.75; duration: 900 }
+                NumberAnimation { from: 18 + track.width * 0.75; to: 18; duration: 900 }
+            }
+        }
+    }
+
+    Text {
+        visible: root.toast !== "" && !be.busy
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        anchors.margins: 18; anchors.bottomMargin: 12
+        wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight
+        text: root.toast; color: Theme.accent; font.family: Theme.font; font.pixelSize: 20
+        z: 5
     }
 
     // ---- detail sheet
@@ -249,60 +400,122 @@ Item {
         id: sheet
         anchors.fill: parent
         visible: root.detailOpen
-        property var e: root.entry(root.curPkg)
+        readonly property bool inst: root.detailOpen && root.isInstalled(root.cur.source, root.cur.id)
+        readonly property bool opHere: be.busy && be.opSource === root.cur.source && be.opId === root.cur.id
         Rectangle { anchors.fill: parent; color: Theme.pageBg }
         MouseArea { anchors.fill: parent }
         Flickable {
+            id: sflick
             x: 18; y: root.topInset + 12
-            width: parent.width - 36; height: parent.height - root.topInset - 12
-            contentWidth: width; contentHeight: dcol.height + 32
+            width: parent.width - 36; height: parent.height - root.topInset - 12 - (opBar.visible ? opBar.height : 0)
+            contentWidth: width; contentHeight: dcol.height + 40
             boundsBehavior: Flickable.StopAtBounds; clip: true
             Column {
                 id: dcol
                 width: parent.width; spacing: 14
-                Text {
-                    width: parent.width; wrapMode: Text.WordWrap
-                    text: sheet.e ? sheet.e.name.toLowerCase() : ""
-                    color: Theme.text; font.family: Theme.font; font.pixelSize: 52; font.weight: Theme.fontLight
+                Row {
+                    spacing: 16
+                    AppIcon { item: root.cur; size: 96 }
+                    Column {
+                        width: dcol.width - 112; spacing: 4
+                        Text {
+                            width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                            text: (root.cur.name || "").toLowerCase()
+                            color: Theme.text; font.family: Theme.font; font.pixelSize: 40; font.weight: Theme.fontLight
+                        }
+                        Text {
+                            width: parent.width; elide: Text.ElideRight
+                            text: root.sourceLabel(root.cur.source) + (root.cur.version ? "  ·  " + root.cur.version : "")
+                            color: Theme.textDim; font.family: Theme.font; font.pixelSize: 20
+                        }
+                        Text {
+                            text: sheet.inst ? "installed" : "not installed"
+                            color: sheet.inst ? Theme.accent : Theme.textDim
+                            font.family: Theme.font; font.pixelSize: 22; font.weight: Theme.fontLight
+                        }
+                    }
                 }
                 Text {
                     width: parent.width; wrapMode: Text.WordWrap
-                    text: root.isInstalled(root.curPkg) ? "installed" : "not installed"
-                    color: root.isInstalled(root.curPkg) ? Theme.accent : Theme.textDim
-                    font.family: Theme.font; font.pixelSize: 26; font.weight: Theme.fontLight
-                }
-                Text {
-                    width: parent.width; wrapMode: Text.WordWrap
-                    text: sheet.e ? sheet.e.desc : ""
+                    text: root.cur.summary || ""
+                    visible: text !== ""
                     color: Theme.text; font.family: Theme.font; font.pixelSize: 24; font.weight: Theme.fontLight
                 }
-                Text {
-                    width: parent.width; wrapMode: Text.WordWrap
-                    text: sheet.e ? "package: " + sheet.e.pkg + "  ·  " + sheet.e.cat : ""
-                    color: Theme.textDim; font.family: Theme.font; font.pixelSize: 20
-                }
-                Text { text: "command"; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 21 }
-                Text {
-                    width: parent.width; wrapMode: Text.WrapAnywhere
-                    text: root.installCmd(root.curPkg)
-                    color: Theme.text; font.family: "monospace"; font.pixelSize: 22
-                }
-                Text {
-                    width: parent.width; wrapMode: Text.WordWrap
-                    text: "opens a terminal and asks for your sudo password there."
-                    color: Theme.textDim; font.family: Theme.font; font.pixelSize: 18
-                }
-                MetroButton {
-                    width: parent.width
-                    text: root.isInstalled(root.curPkg) ? "reinstall / upgrade" : "install"
-                    accentFill: true
-                    onClicked: { if (root.entry(root.curPkg)) root.runInTerminal(root.installCmd(root.curPkg)) }
-                }
+                // actions
                 Row {
                     spacing: 12
-                    MetroButton { text: "refresh status"; onClicked: root.refreshInstalled() }
-                    MetroButton { text: "close"; onClicked: root.detailOpen = false }
+                    MetroButton {
+                        visible: !sheet.inst
+                        text: sheet.opHere ? "installing..." : "install"
+                        accentFill: true; enabled2: !be.busy
+                        onClicked: { if (be.escalation === "none" && root.cur.source === "apt") be.openInTerminal("apt", root.cur.id, "install"); else root.doInstall() }
+                    }
+                    MetroButton {
+                        visible: sheet.inst
+                        text: "open"; accentFill: true
+                        onClicked: be.openApp(root.cur.source, root.cur.id)
+                    }
+                    MetroButton {
+                        visible: sheet.inst
+                        text: root.confirmRemove ? "tap again to confirm" : "uninstall"
+                        enabled2: !be.busy
+                        onClicked: { if (be.escalation === "none" && root.cur.source === "apt") be.openInTerminal("apt", root.cur.id, "remove"); else root.doRemove() }
+                    }
                 }
+                Hint { visible: root.cur.source === "apt" && be.escalation === "none"; text: "install/uninstall opens a terminal (sudo needs a password here)." }
+                Hint { visible: root.cur.source === "flathub" && !be.hasFlatpak; text: "flatpak is not installed on this system (apt install flatpak)." }
+                // progress
+                Item {
+                    visible: sheet.opHere
+                    width: parent.width; height: 40
+                    Text { width: parent.width; elide: Text.ElideRight; text: be.opLine; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 18 }
+                    Rectangle { y: 30; width: parent.width; height: 6; color: Theme.textDim; opacity: 0.35 }
+                    Rectangle { y: 30; width: be.opProgress >= 0 ? parent.width * be.opProgress : parent.width * 0.25; height: 6; color: Theme.accent }
+                }
+                Hint { visible: root.detailLoading; text: "loading details..." }
+                Hint { visible: root.detailError !== ""; text: root.detailError }
+                // screenshots
+                Flickable {
+                    visible: root.cur.screenshots !== undefined && root.cur.screenshots.length > 0
+                    width: parent.width; height: 300
+                    contentWidth: shots.width; contentHeight: 300
+                    flickableDirection: Flickable.HorizontalFlick
+                    boundsBehavior: Flickable.StopAtBounds; clip: true
+                    Row {
+                        id: shots
+                        spacing: 10
+                        Repeater {
+                            model: root.cur.screenshots || []
+                            RemoteImage {
+                                required property string modelData
+                                height: 300; width: 480; url: modelData; decodeW: 800
+                            }
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width; wrapMode: Text.WordWrap
+                    visible: text !== ""
+                    text: root.cur.description || ""
+                    color: Theme.text; font.family: Theme.font; font.pixelSize: 21; font.weight: Theme.fontLight
+                }
+                Text {
+                    width: parent.width; wrapMode: Text.WrapAnywhere
+                    color: Theme.textDim; font.family: Theme.font; font.pixelSize: 19; lineHeight: 1.2
+                    text: {
+                        var c = root.cur, l = []
+                        l.push("id: " + (c.id || ""))
+                        if (c.developer) l.push("by: " + c.developer)
+                        if (c.category) l.push("category: " + c.category)
+                        if (c.license) l.push("license: " + c.license)
+                        if (c.downloadSize) l.push("download: " + (c.downloadSize / 1048576).toFixed(1) + " MB")
+                        if (c.installedSize) l.push("installed size: " + (c.installedSize / 1048576).toFixed(1) + " MB")
+                        if (c.homepage) l.push("web: " + c.homepage)
+                        if (c.offline) l.push("(cached copy, flathub unreachable)")
+                        return l.join("\n")
+                    }
+                }
+                MetroButton { width: parent.width; text: "close"; onClicked: root.detailOpen = false }
             }
         }
     }

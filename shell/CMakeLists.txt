@@ -8,6 +8,7 @@ qt_standard_project_setup(REQUIRES 6.5)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(VTERM REQUIRED IMPORTED_TARGET vterm)
 
+option(TILES_DEMO_DATA "Seed demo mail/contacts/notes/calendar/music/weather data (dev only; env TILES_DEMO=1 also enables it at runtime)" OFF)
 qt_add_executable(flowde-shell src/main.cpp src/Services.cpp src/Services.h src/AppModel.cpp src/AppModel.h src/AppStore.cpp src/AppStore.h)
 
 set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qml/StatusBar.qml
@@ -26,7 +27,7 @@ set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qm
   qml/apps/index.js qml/apps/ClockApp.qml qml/apps/CalculatorApp.qml qml/apps/CalendarApp.qml qml/apps/NotesApp.qml qml/apps/PhoneApp.qml qml/apps/PeopleApp.qml qml/apps/MessagesApp.qml qml/apps/WeatherApp.qml qml/apps/MusicApp.qml qml/apps/MailApp.qml qml/apps/FilesApp.qml qml/apps/BrowserApp.qml qml/apps/CameraApp.qml qml/apps/GamesApp.qml qml/apps/MapsApp.qml qml/apps/NoxalApp.qml qml/apps/PhotosApp.qml qml/apps/PodcastsApp.qml qml/apps/RadioApp.qml qml/apps/RecorderApp.qml qml/apps/RemindersApp.qml qml/apps/StoreApp.qml qml/apps/TerminalApp.qml qml/apps/VideosApp.qml qml/apps/WalletApp.qml)
 set_source_files_properties(qml/Theme.qml qml/LiveTiles.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h src/Sys.cpp src/Sys.h src/TermSession.cpp src/TermSession.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
+qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h src/Sys.cpp src/Sys.h src/TermSession.cpp src/TermSession.h src/StoreBackend.cpp src/StoreBackend.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
 qt_add_shaders(flowde-shell "flowde-shaders" PREFIX "/FlowShell" FILES shaders/glass.frag shaders/wallpaper.frag shaders/icon.frag
   OUTPUTS shaders/glass.frag.qsb shaders/wallpaper.frag.qsb shaders/icon.frag.qsb BATCHABLE
   GLSL "100 es,120,150" NOHLSL NOMSL)
@@ -35,3 +36,7 @@ qt_add_resources(flowde-shell "assets" PREFIX "/FlowShell" FILES ${ASSET_FILES})
 target_include_directories(flowde-shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(flowde-shell PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::DBus PkgConfig::VTERM util)
 install(TARGETS flowde-shell RUNTIME DESTINATION bin)
+
+if(TILES_DEMO_DATA)
+  target_compile_definitions(flowde-shell PRIVATE TILES_DEMO_DATA)
+endif()
