@@ -1,6 +1,7 @@
 #include "AppStore.h"
 #include <QDir>
 #include <QFile>
+#include <QJSValue>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -24,13 +25,17 @@ QVariant AppStore::load(const QString &app, const QVariant &fallback) const {
     if (e.error != QJsonParseError::NoError || d.isNull()) return fallback;
     return d.isArray() ? QVariant(d.array().toVariantList()) : QVariant(d.object().toVariantMap());
 }
-bool AppStore::save(const QString &app, const QVariant &value) const {
+bool AppStore::save(const QString &app, const QVariant &value) {
     QDir().mkpath(dir());
     QSaveFile f(dir() + "/" + safe(app) + ".json");
     if (!f.open(QIODevice::WriteOnly)) return false;
     QJsonDocument d;
-    const QJsonValue jv = QJsonValue::fromVariant(value);
+    // a JS object/array handed over as QJSValue must be unwrapped first, else it serialises as {}
+    const QVariant v = value.metaType() == QMetaType::fromType<QJSValue>() ? value.value<QJSValue>().toVariant() : value;
+    const QJsonValue jv = QJsonValue::fromVariant(v);
     d = jv.isArray() ? QJsonDocument(jv.toArray()) : QJsonDocument(jv.toObject());
     f.write(d.toJson(QJsonDocument::Compact));
-    return f.commit();
+    const bool ok = f.commit();
+    if (ok) emit saved(app);
+    return ok;
 }

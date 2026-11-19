@@ -14,7 +14,7 @@ set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qm
   qml/GestureBar.qml qml/LockScreen.qml qml/HomeScreen.qml qml/AppSwitcher.qml qml/Shade.qml
   qml/AppIcon.qml qml/GlassIcon.qml qml/AppPage.qml qml/Toggle.qml qml/SliderRow.qml
   qml/MetroTile.qml qml/TileGlyph.qml qml/TileGallery.qml qml/StartScreen.qml qml/AllApps.qml qml/AlphaJump.qml qml/NavBar.qml qml/TilePresets.js
-  qml/TileFaces.qml qml/TileGroupHeader.qml
+  qml/TileFaces.qml qml/TileGroupHeader.qml qml/LiveTiles.qml
   qml/Pivot.qml qml/PivotPage.qml qml/MetroToggle.qml qml/MetroDropdown.qml qml/TilesKeyboard.qml qml/MetroButton.qml qml/MetroTextField.qml
   qml/MetroListRow.qml qml/MetroSlider.qml qml/MetroColorGrid.qml qml/MetroSectionHeader.qml qml/AppBar.qml qml/ControlsGallery.qml
   qml/SettingsApp.qml qml/SettingsHome.qml
@@ -24,7 +24,7 @@ set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qm
   qml/settings2/SettingsNetwork.qml qml/settings2/SettingsAbout.qml qml/settings2/SettingsSound.qml qml/settings2/SettingsEmail.qml
   qml/settings2/SettingsDevices.qml
   qml/apps/index.js qml/apps/ClockApp.qml qml/apps/CalculatorApp.qml qml/apps/CalendarApp.qml qml/apps/NotesApp.qml qml/apps/PhoneApp.qml qml/apps/PeopleApp.qml qml/apps/MessagesApp.qml qml/apps/WeatherApp.qml qml/apps/MusicApp.qml qml/apps/MailApp.qml qml/apps/FilesApp.qml qml/apps/BrowserApp.qml qml/apps/CameraApp.qml qml/apps/GamesApp.qml qml/apps/MapsApp.qml qml/apps/NoxalApp.qml qml/apps/PhotosApp.qml qml/apps/PodcastsApp.qml qml/apps/RadioApp.qml qml/apps/RecorderApp.qml qml/apps/RemindersApp.qml qml/apps/StoreApp.qml qml/apps/TerminalApp.qml qml/apps/VideosApp.qml qml/apps/WalletApp.qml)
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/LiveTiles.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h src/Sys.cpp src/Sys.h src/TermSession.cpp src/TermSession.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
 qt_add_shaders(flowde-shell "flowde-shaders" PREFIX "/FlowShell" FILES shaders/glass.frag shaders/wallpaper.frag shaders/icon.frag

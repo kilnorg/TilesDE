@@ -9,6 +9,8 @@ class AppStore : public QObject {
 public:
     explicit AppStore(QObject *p = nullptr) : QObject(p) {}
     Q_INVOKABLE QVariant load(const QString &app, const QVariant &fallback = {}) const;
-    Q_INVOKABLE bool save(const QString &app, const QVariant &value) const;
+    Q_INVOKABLE bool save(const QString &app, const QVariant &value);
     Q_INVOKABLE QString dir() const;
+signals:
+    void saved(const QString &app);   // after every successful save (LiveTiles refreshes on it)
 };

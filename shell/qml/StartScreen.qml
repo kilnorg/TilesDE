@@ -101,25 +101,41 @@ Item {
     readonly property var glyphs: ["phone", "message", "mail", "calendar", "clock", "photos", "music", "maps", "notes", "files", "weather",
         "terminal", "store", "camera", "settings", "people", "browser", "wallet", "noxal", "video"]
 
+    // Built-in apps get their text from LiveTiles (real app data); other tiles keep the labelled placeholders below.
     function faceFor(id) {
-        const d = new Date()
+        const d = new Date(), lt = LiveTiles.get(id)
+        const img = lt ? lt.imageSource : ""
+        if (lt) {
+            const big = lt.big !== "" ? lt.big : (lt.badge > 0 ? String(lt.badge) : "")
+            switch (id) {
+            case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: lt.title === "" ? "No upcoming events" : lt.title + ", " + lt.subtitle, img: img }
+            default: return { face: img !== "" ? "photo" : "text", big: big, line1: lt.title, line2: lt.subtitle, img: img }
+            }
+        }
         switch (id) {
-        case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: "Design review, 10:30" }
-        case "mail": return { face: "text", big: "3", line1: "Design review", line2: "Inbox, 3 unread" }
-        case "weather": return { face: "weather", big: "22°", line1: "Sunny", line2: "H 24°  L 16°" }
-        case "photos": return { face: "photo", big: "", line1: "Yesterday", line2: "42 new photos" }
-        case "people": return { face: "contact", big: "", line1: "Sam", line2: "Sent you a photo" }
-        case "phone": return { face: "missed", big: "2", line1: "Missed call", line2: "Sam, 09:41" }
-        case "music": return { face: "music", big: "", line1: "Slow Tide", line2: "Paper Lanterns" }
-        case "store": return { face: "text", big: "", line1: "Updates", line2: "5 apps ready" }
-        default: return { face: "text", big: "", line1: "", line2: "" }
+        case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: "No upcoming events", img: "" }
+        case "weather": return { face: "weather", big: "22°", line1: "Sunny", line2: "H 24°  L 16°", img: "" }
+        case "photos": return { face: "photo", big: "", line1: "Yesterday", line2: "42 new photos", img: "" }
+        case "people": return { face: "contact", big: "", line1: "Sam", line2: "Sent you a photo", img: "" }
+        case "phone": return { face: "missed", big: "2", line1: "Missed call", line2: "Sam, 09:41", img: "" }
+        case "music": return { face: "music", big: "", line1: "Slow Tide", line2: "Paper Lanterns", img: "" }
+        case "store": return { face: "text", big: "", line1: "Updates", line2: "5 apps ready", img: "" }
+        default: return { face: "text", big: "", line1: "", line2: "", img: "" }
         }
     }
+    // push fresh LiveTiles data into the existing rows
+    function refreshFaces() {
+        for (let i = 0; i < tileModel.count; i++) {
+            const r = tileModel.get(i), lt = LiveTiles.get(r.tid), f = faceFor(r.tid)
+            tileModel.set(i, { face: f.face, big: f.big, line1: f.line1, line2: f.line2, img: f.img, hasData: !!lt, badge: lt ? lt.badge : r.badge })
+        }
+    }
+    Connections { target: LiveTiles; function onChanged() { root.refreshFaces() } }
     // every row carries the same roles (ListModel requirement)
     function mkRow(t) {
-        const f = faceFor(t.id)
+        const f = faceFor(t.id), lt = LiveTiles.get(t.id)
         return { tid: t.id, name: t.label, label: t.label, glyph: t.glyph, size: t.size, group: t.group || "", colorIdx: t.color | 0,
-                 live: !!t.live, picture: !!t.picture, badge: t.badge | 0, face: f.face, big: f.big, line1: f.line1, line2: f.line2 }
+                 live: !!t.live, picture: !!t.picture, badge: lt ? lt.badge : (t.badge | 0), face: f.face, big: f.big, line1: f.line1, line2: f.line2, img: f.img, hasData: !!lt }
     }
 
     function refreshSel() {
@@ -366,10 +382,12 @@ Item {
                     required property string big
                     required property string line1
                     required property string line2
+                    required property string img
+                    required property bool hasData
 
                     readonly property var lay: (root.layout.length > index) ? root.layout[index] : null
                     readonly property color fillC: Theme.tileColor(cell.tid, cell.colorIdx)
-                    readonly property bool liveOn: cell.live || ((cell.face === "missed" || cell.face === "music") && cell.size !== "small")
+                    readonly property bool liveOn: cell.live || (cell.hasData && cell.size !== "small") || ((cell.face === "missed" || cell.face === "music") && cell.size !== "small")
                     property bool dragging: false
                     property real dragX: 0
                     property real dragY: 0
@@ -499,7 +517,7 @@ Item {
                             anchors.fill: parent
                             active: cell.liveOn
                             sourceComponent: TileFaces {
-                                face: cell.face; size: cell.size; big: cell.big; line1: cell.line1; line2: cell.line2
+                                face: cell.face; size: cell.size; big: cell.big; line1: cell.line1; line2: cell.line2; imageSource: cell.img
                                 ink: tile.ink; seed: root.hashOf(cell.tid) + 1
                                 animate: tile.showingBack
                             }

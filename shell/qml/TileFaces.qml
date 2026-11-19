@@ -17,13 +17,14 @@ Item {
     property string line2: ""
     property color ink: "#ffffff"
     property int seed: 0
+    property string imageSource: ""        // LiveTiles picture (file path or url); wins over Theme.startPhoto
     property bool animate: true
 
     readonly property bool compact: size === "small"
     readonly property bool hasPicture: face === "photo" || face === "contact" || face === "scene"
     readonly property real unit: Math.min(width, height)
     readonly property string photoUrl: {
-        const p = Theme.startPhoto
+        const p = root.imageSource !== "" ? root.imageSource : Theme.startPhoto
         if (!p || p === "") return ""
         return (p.indexOf("://") >= 0 || p.indexOf("qrc:") === 0) ? p : "file://" + p
     }

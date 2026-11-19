@@ -137,10 +137,9 @@ Window {
     onFocusTargetChanged: oskDismissed = false
 
     function gesture(name) {
-        if (name === "back" && kb.shown) { oskDismissed = true; return }
+        if (name === "back") { if (page !== "lock" || kb.shown) backStack(); return }
         if (page === "lock" && name !== "shade" && name !== "qs") return
-        if (overlay !== "" && (name === "home" || name === "back")) { overlay = ""; return }
-        if (settingsOpen && name === "back" && shadeP < 0.5) { settings.back(); return }
+        if (overlay !== "" && name === "home") { overlay = ""; return }
         if (settingsOpen && (name === "home" || name === "switcher")) closeSettings()
         if (name === "home") {
             shadeP = 0; home.searchOpen = false; home.allApps.closeOverlays()
@@ -152,12 +151,21 @@ Window {
         else if (name === "switcher") { shadeP = 0; page = "switcher" }
         else if (name === "shade" || name === "qs") shadeP = 1
         else if (name === "search") { shadeP = 0; page = "home"; home.searchOpen = !home.searchOpen }
-        else if (name === "back") {
-            if (shadeP > 0.5) shadeP = 0
-            else if (page === "home") home.goBack()
-            else if (page === "app") { if (!appPage.systemBack()) page = "home" }
-            else if (page === "switcher") page = "home"
-        }
+    }
+    // Back: the first closer that has something to close consumes the gesture (topmost layer first).
+    function backStack() {
+        const closers = [
+            () => { if (!kb.shown) return false; oskDismissed = true; return true },                          // keyboard
+            () => { if (shadeP <= 0.5) return false; shadeP = 0; return true },                              // shade / quick settings
+            () => { if (overlay === "") return false; overlay = ""; return true },                           // overlay (controls gallery)
+            () => { if (!settingsOpen) return false; settings.back(); return true },                         // settings pages
+            () => page === "app" && appPage.systemBack(),                                                    // app inner view
+            () => { if (page !== "app") return false; page = "home"; return true },                          // app
+            () => { if (page !== "switcher") return false; page = "home"; return true },                     // switcher
+            () => page === "home" && home.goBack()                                                           // search / apps / edit
+        ]
+        for (const close of closers) if (close()) return true
+        return false
     }
 
     Timer { id: scrollLater; interval: Theme.turnstileMs + 400; onTriggered: win.scrollSettings("end") }
