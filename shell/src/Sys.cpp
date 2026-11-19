@@ -10,7 +10,7 @@
 static bool startApp(const QString &prog, const QStringList &args) {
     QProcess p;
     QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
-    e.insert("MOZ_ENABLE_WAYLAND", "1"); e.insert("MOZ_USE_XINPUT2", "1");
+    e.insert("TILES_MANAGED", "1"); e.insert("MOZ_ENABLE_WAYLAND", "1"); e.insert("MOZ_USE_XINPUT2", "1");
     e.insert("GTK_CSD", "0"); e.insert("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1");
     p.setProcessEnvironment(e); p.setProgram(prog); p.setArguments(args);
     return p.startDetached();

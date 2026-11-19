@@ -45,6 +45,18 @@ def shell_rect():
             return {"x": r["x"] + w["x"], "y": r["y"] + w["y"], "width": w["width"], "height": w["height"]}
     return None
 
+def managed(n):
+    """Only windows started by TilesDE (env TILES_MANAGED=1 on the pid or an ancestor); desktop apps stay untouched."""
+    pid = n.get("pid")
+    for _ in range(6):
+        if not pid or pid < 2: return False
+        try:
+            if b"TILES_MANAGED=1" in open(f"/proc/{pid}/environ", "rb").read().split(b"\0"): return True
+            pid = int(open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[1])
+        except Exception:
+            return False
+    return False
+
 def info(n):
     wp = n.get("window_properties") or {}
     return {"app_id": n.get("app_id") or wp.get("class") or "app", "title": n.get("name") or ""}
@@ -91,7 +103,7 @@ def on_event(e):
     global raise_timer, shown
     c, n = e.get("change"), e.get("container") or {}
     i = n.get("id")
-    if c == "new" and not is_shell(n) and (n.get("app_id") or n.get("window_properties")):
+    if c == "new" and not is_shell(n) and managed(n) and (n.get("app_id") or n.get("window_properties")):
         with mu:
             wins[i] = info(n)
         threading.Timer(0.25, lambda: (show(i), place(i))).start()   # app_id/title settle after map
