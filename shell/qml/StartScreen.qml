@@ -501,7 +501,7 @@ Item {
                     }
                     SequentialAnimation {
                         id: enterAnim
-                        PauseAnimation { duration: cell.tid === root.heroTid ? 0 : (cell.lay ? Math.min(600, cell.lay.row * 70 + cell.lay.col * 35) : 0) + (root.heroTid !== "" ? 140 : 0) }
+                        PauseAnimation { duration: cell.tid === root.heroTid ? 0 : (cell.lay ? Math.min(260, cell.lay.row * 40 + cell.lay.col * 20) : 0) + (root.heroTid !== "" ? 50 : 0) }
                         NumberAnimation { target: cell; property: "enterP"; to: 1; duration: cell.tid === root.heroTid ? Theme.turnstileMs * 0.7 : Theme.turnstileMs + 80; easing.type: Easing.OutCubic }
                     }
                     SequentialAnimation {

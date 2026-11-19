@@ -20,7 +20,7 @@ Window {
     property bool appSwipe: false      // left-edge back swipe in progress (finger drives appP)
     property real appP: 0
     // response ~0.4 s, damping ratio ~0.85 (see docs/mobile-motion.md)
-    Behavior on appP { enabled: !win.appDrag && !win.appSwipe && !Theme.reduceMotion; SpringAnimation { spring: 4.2; damping: 0.38; epsilon: 0.001; mass: 1 } }
+    Behavior on appP { enabled: !win.appDrag && !win.appSwipe && !Theme.reduceMotion; SpringAnimation { spring: 5.5; damping: 0.5; epsilon: 0.002; mass: 1 } }
     // Starts on touch-up, never waits for the app: one progress value (appP) drives the shared element.
     function openApp(name, rect, launching) {
         if (name === "Settings") { openSettings(""); return }
@@ -109,9 +109,12 @@ Window {
     property real lockP: StartPage === "lock" ? 0 : 1
     property real shadeP: StartPage === "shade" ? 1 : 0
     property real switchP: StartPage === "switcher" ? 1 : 0
+    property bool navOn: StartPage !== "lock"     // nav buttons arrive after the tiles when unlocking
+    Timer { id: navDelay; interval: 380; onTriggered: win.navOn = win.lockP > 0.9 }
+    onLockPChanged: { if (lockP < 0.9) { navOn = false; navDelay.stop() } else if (!navOn && !navDelay.running) navDelay.start() }
     onPageChanged: { lockP = page === "lock" ? 0 : 1; switchP = page === "switcher" ? 1 : 0; appP = page === "app" ? 1 : 0 }
 
-    Behavior on lockP { enabled: !win.lockDragging && !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002; mass: 1; modulus: 0 } }
+    Behavior on lockP { enabled: !win.lockDragging && !Theme.reduceMotion; NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
     Behavior on shadeP { enabled: !shadeDrag.active && !shadeCloseDrag.active && !Theme.reduceMotion; SpringAnimation { spring: 3.4; damping: 0.3; epsilon: 0.002 } }
     Behavior on switchP { enabled: !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002 } }
 
@@ -166,6 +169,7 @@ Window {
             if (k === "theme") Theme.select(v)
             else if (k === "open") win.openApp(v, Qt.rect(root.width / 2 - 31, root.height * 0.2, 62, 62), false)
             else if (k === "screen") win.screenCmd(v)
+            else if (k === "lockp") { win.lockDragging = true; win.lockP = parseFloat(v) }
             else if (k === "settings") { if (v === "back") settings.back(); else if (v === "close") win.closeSettings(); else win.openSettings(v) }
             else if (k === "scroll") win.scrollSettings(v)
             else if (k === "shot") win.contentItem.grabToImage(function(r) { r.saveToFile(v) })   // test hook: PNG of the window
@@ -301,7 +305,7 @@ Window {
             onClosedAll: { win.openApps = []; win.wmSend("closeall"); win.page = "home" }
             onClosedOne: (n) => { const w = win.extWins.find(o => o._n === n); if (w) win.wmSend("close " + w.id); else win.openApps = win.openApps.filter(x => x !== n) }
         }
-        AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; kbH: kb.visibleH; z: 15; shrink: win.appDrag; onBack: win.gesture("home") }
+        AppPage { id: appPage; anchors.fill: parent; enabled: win.page === "app"; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; kbH: kb.visibleH; z: 15; shrink: win.appDrag; onBack: win.gesture("home") }
         SettingsApp {
             id: settings
             anchors.fill: parent; anchors.bottomMargin: 56 + kb.visibleH; z: 16
@@ -339,28 +343,25 @@ Window {
 
         // lock: swipe up. Full-size pickable layer so the home screen underneath never takes the touch.
         // MouseArea (touch is delivered as synthesized mouse), follows the finger 1:1, releases into the spring on lockP.
-        MouseArea {
+        Item {
             id: lockArea
             anchors.fill: parent; z: 19
             enabled: win.page === "lock"; visible: win.page === "lock"
-            property real y0: 0
-            property real ly: 0
-            property real lt: 0
             property real vy: 0
-            onPressed: (m) => { y0 = m.y; ly = m.y; lt = Date.now(); vy = 0; win.lockDragging = true }
-            onPositionChanged: (m) => {
-                const now = Date.now(), dt = now - lt
-                if (dt > 0) vy = 0.6 * vy + 0.4 * ((m.y - ly) / dt * 1000)
-                ly = m.y; lt = now
-                win.lockP = Math.max(0, Math.min(1, -(m.y - y0) / root.height))
+            DragHandler {
+                id: lockDrag
+                target: null; xAxis.enabled: false; dragThreshold: 2
+                onTranslationChanged: if (active) {
+                    lockArea.vy = centroid.velocity.y
+                    win.lockP = Math.max(0, Math.min(1, -translation.y / root.height))
+                }
+                onActiveChanged: {
+                    if (active) { win.lockDragging = true; return }
+                    win.lockDragging = false
+                    if (win.lockP > 0.25 || lockArea.vy < -900) win.page = "home"
+                    else { win.page = "lock"; win.lockP = 0 }
+                }
             }
-            function _end() {
-                win.lockDragging = false
-                if (win.lockP > 0.25 || vy < -900) win.page = "home"
-                else { win.page = "lock"; win.lockP = 0 }
-            }
-            onReleased: _end()
-            onCanceled: _end()
         }
 
         StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: win.lockP < 0.5 ? "white" : Theme.text }
@@ -369,6 +370,7 @@ Window {
             z: 21; anchors { top: parent.top; left: parent.left; right: parent.right } height: 44
             DragHandler {
                 id: shadeDrag
+                enabled: win.page !== "lock"
                 target: null; xAxis.enabled: false
                 onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, translation.y / (root.height * 0.4)))
                 onActiveChanged: if (!active) win.shadeP = win.shadeP > 0.3 ? 1 : 0
@@ -383,6 +385,7 @@ Window {
             // swipe up on shade closes it
             DragHandler {
                 id: shadeCloseDrag
+                enabled: win.shadeP > 0.05
                 target: null; xAxis.enabled: false
                 onTranslationChanged: if (active) win.shadeP = Math.max(0, Math.min(1, 1 + translation.y / (root.height * 0.4)))
                 onActiveChanged: if (!active) win.shadeP = win.shadeP > 0.7 ? 1 : 0
@@ -409,7 +412,9 @@ Window {
         Connections { target: kb; function onVisibleHChanged() { win.wmSend("kb " + (win.extShown > 0 ? Math.round(kb.visibleH) : 0)) } }
         NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-            visible: win.lockP > 0.9
+            visible: opacity > 0.01
+            opacity: win.navOn ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 220 } }
             ink: Theme.text
             onBack: win.gesture("back")
             onBackHeld: win.gesture("switcher")

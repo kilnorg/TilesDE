@@ -17,7 +17,7 @@ Item {
     property real bounce: 0            // hint lift in px, animated while idle
     Timer { interval: 5000; running: root.visible; repeat: true; onTriggered: root.now = new Date() }
     // slides up with the finger (progress = fraction of height); never fades. Opaque wallpaper copy covers the home screen beneath.
-    y: Math.min(0, -progress * height) - bounce
+    transform: Translate { y: Math.min(0, -root.progress * root.height) - root.bounce }
     visible: progress < 0.999
 
     // bounce hint: lifts 24px, settles, every 6s while idle
@@ -29,7 +29,9 @@ Item {
         NumberAnimation { target: root; property: "bounce"; to: 0; duration: 650; easing.type: Easing.OutBounce }
     }
 
-    ShaderEffectSource { anchors.fill: parent; z: -2; sourceItem: Theme.backdropItem; live: root.visible; hideSource: false }
+    ShaderEffectSource { id: bd; anchors.fill: parent; z: -2; sourceItem: Theme.backdropItem; live: false; hideSource: false
+        Component.onCompleted: scheduleUpdate()
+        Timer { interval: 2000; running: root.visible && root.progress < 0.01; repeat: true; onTriggered: bd.scheduleUpdate() } }
 
     // subtle scrim so light text reads on any wallpaper
     Rectangle { anchors.fill: parent; z: -1
