@@ -1,7 +1,8 @@
 import QtQuick
 import FlowShell
 
-// Browser launcher: no web engine on the target, so pages open in firefox-esr (fallback xdg-open).
+// Browser launcher: no web engine on the target, so pages open in firefox-esr (fallback xdg-open). The window is placed
+// inside the phone window by tools/tiles-wm.py (Main.qml); back closes it, the switcher lists it.
 // Store key "browser": { pins: [{title, url}], bookmarks: [{title, url}], history: [{url, time (ms)}] }
 Item {
     id: root

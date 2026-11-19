@@ -2,6 +2,7 @@
 #include "AppModel.h"
 #include <QDir>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QSettings>
 #include <QStandardPaths>
 #include <algorithm>
@@ -65,7 +66,12 @@ bool AppModel::launch(int row) {
     if (row < 0 || row >= m_apps.size()) return false;
     QString exec = m_apps[row].exec;
     exec.replace(QRegularExpression("%[a-zA-Z]"), "");
-    return QProcess::startDetached("/bin/sh", {"-c", exec.trimmed()});
+    QProcess p;
+    QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
+    e.insert("MOZ_ENABLE_WAYLAND", "1"); e.insert("MOZ_USE_XINPUT2", "1");
+    e.insert("GTK_CSD", "0"); e.insert("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1");
+    p.setProcessEnvironment(e); p.setProgram("/bin/sh"); p.setArguments({"-c", exec.trimmed()});
+    return p.startDetached();
 }
 
 QVariantMap AppModel::get(int row) const {

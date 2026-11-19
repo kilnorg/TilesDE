@@ -6,8 +6,17 @@
 #include <QProcessEnvironment>
 #include <QDateTime>
 
-bool Sys::launch(const QString &prog, const QStringList &args) const { return QProcess::startDetached(prog, args); }
-bool Sys::openUrl(const QString &url) const { return QProcess::startDetached("xdg-open", {url}); }
+// Third-party apps run inside the phone window (tools/tiles-wm.py places them): native Wayland, no client-side decorations.
+static bool startApp(const QString &prog, const QStringList &args) {
+    QProcess p;
+    QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
+    e.insert("MOZ_ENABLE_WAYLAND", "1"); e.insert("MOZ_USE_XINPUT2", "1");
+    e.insert("GTK_CSD", "0"); e.insert("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1");
+    p.setProcessEnvironment(e); p.setProgram(prog); p.setArguments(args);
+    return p.startDetached();
+}
+bool Sys::launch(const QString &prog, const QStringList &args) const { return startApp(prog, args); }
+bool Sys::openUrl(const QString &url) const { return startApp("xdg-open", {url}); }
 QString Sys::home() const { return QDir::homePath(); }
 bool Sys::exists(const QString &path) const { return QFileInfo::exists(path); }
 QString Sys::readText(const QString &path, int maxBytes) const {

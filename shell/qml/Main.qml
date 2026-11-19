@@ -56,6 +56,37 @@ Window {
         f.contentY = v === "end" ? max : v === "top" ? 0 : Math.max(0, Math.min(max, Number(v)))
         return true
     }
+    // Third-party app windows (firefox, foot, ...): tools/tiles-wm.py keeps them inside this window and writes its state to
+    // $XDG_RUNTIME_DIR/tiles-wm.json; commands go to its fifo. extShown = sway con_id of the visible one (0 = none).
+    property var extWins: []
+    property int extShown: 0
+    property string wmScript: {
+        const c = [Sys.home() + "/flowde-shell-build/tools/tiles-wm.py", "/usr/share/tilesde/tiles-wm.py"]
+        for (const f of c) if (Sys.exists(f)) return f
+        return ""
+    }
+    function wmSend(cmd) { Sys.launch("sh", ["-c", 'echo "$0" > "${XDG_RUNTIME_DIR:-/run/user/1000}/tiles-wm.fifo"', cmd]) }
+    readonly property var extNames: extWins.map(w => w._n)
+    function extPick(name) { const w = extWins.find(o => o._n === name); if (w) wmSend("show " + w.id); return !!w }
+    Timer {
+        interval: 400; repeat: true; running: win.wmScript !== ""
+        onTriggered: {
+            const t = Sys.readText("/run/user/1000/tiles-wm.json", 65536)
+            if (t === "" || t === win._extRaw) return
+            win._extRaw = t
+            try {
+                const d = JSON.parse(t)
+                const l = d.wins; for (let i = 0; i < l.length; ++i) l[i]._n = l[i].app_id.charAt(0).toUpperCase() + l[i].app_id.slice(1)
+                const seen = {}
+                for (const w of l) { if (seen[w._n]) w._n += " " + w.id; seen[w._n] = 1 }
+                const was = win.extShown
+                win.extWins = l; win.extShown = d.shown
+                if (d.shown > 0 && was !== d.shown && win.page === "lock") win.page = "home"
+                if (d.shown > 0) { win.shadeP = 0; win.page = win.page === "switcher" ? "home" : win.page }
+            } catch (e) {}
+        }
+    }
+    property string _extRaw: ""
     Timer { id: launchTimer; interval: 1600; onTriggered: if (win.appLaunching) win.gesture("home") }
     
     property string page: ["shade","centre","search","apps","edit","alpha"].indexOf(StartPage) >= 0 ? "home" : StartPage
@@ -69,6 +100,7 @@ Window {
     Behavior on switchP { enabled: !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002 } }
 
     Component.onCompleted: {
+        if (wmScript !== "") Sys.launch("python3", [wmScript])
         Theme.select(StartTheme)
         Theme.dark = StartDark
         Theme.backdrop = bsrc
@@ -137,6 +169,7 @@ Window {
     onFocusTargetChanged: oskDismissed = false
 
     function gesture(name) {
+        if (extShown > 0 && name !== "back") wmSend("hide")          // app windows stay running, listed in the switcher
         if (name === "back") { if (page !== "lock" || kb.shown) backStack(); return }
         if (page === "lock" && name !== "shade" && name !== "qs") return
         if (overlay !== "" && name === "home") { overlay = ""; return }
@@ -155,6 +188,7 @@ Window {
     // Back: the first closer that has something to close consumes the gesture (topmost layer first).
     function backStack() {
         const closers = [
+            () => { if (extShown <= 0) return false; wmSend("close " + extShown); return true },             // third-party window
             () => { if (!kb.shown) return false; oskDismissed = true; return true },                          // keyboard
             () => { if (shadeP <= 0.5) return false; shadeP = 0; return true },                              // shade / quick settings
             () => { if (overlay === "") return false; overlay = ""; return true },                           // overlay (controls gallery)
@@ -206,10 +240,10 @@ Window {
             anchors.fill: parent
             opacity: win.switchP
             scale: 0.9 + 0.1 * win.switchP
-            running: win.openApps
-            onPicked: (n) => win.openApp(n, Qt.rect(root.width / 2 - 31, root.height / 2 - 31, 62, 62), false)
-            onClosedAll: { win.openApps = []; win.page = "home" }
-            onClosedOne: (n) => win.openApps = win.openApps.filter(x => x !== n)
+            running: win.openApps.concat(win.extNames)
+            onPicked: (n) => { if (!win.extPick(n)) win.openApp(n, Qt.rect(root.width / 2 - 31, root.height / 2 - 31, 62, 62), false) }
+            onClosedAll: { win.openApps = []; win.wmSend("closeall"); win.page = "home" }
+            onClosedOne: (n) => { const w = win.extWins.find(o => o._n === n); if (w) win.wmSend("close " + w.id); else win.openApps = win.openApps.filter(x => x !== n) }
         }
         AppPage { id: appPage; anchors.fill: parent; name: win.appName; from: win.appRect; p: win.appP; sw: root.width; sh: root.height; launching: win.appLaunching; kbH: kb.visibleH; z: 15; onBack: win.gesture("home") }
         SettingsApp {
