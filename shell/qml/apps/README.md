@@ -29,8 +29,11 @@ System bridge (context properties, see src/Sys.h)
 - `Sys.launch(prog, [args])` detached launch -> bool; `Sys.openUrl(url)` xdg-open; `Sys.home()`; `Sys.exists(path)`;
   `Sys.readText(path, maxBytes)`; `Sys.listDir(path, [exts], recursive, limit)` -> [{path,name,size,modified}];
   `Sys.run(prog, [args], timeoutMs)` -> {code,out,err} (blocking, short commands only e.g. `which x`).
-- `TermSession {}` (module FlowShell): pty shell. `shell`, `cols`, `rows`, `running`; `start()`, `write(text)`, `interrupt()`, `stop()`;
-  signals `output(text)` (raw incl. ANSI escapes), `finished(code)`.
+- `TermSession {}` (module FlowShell, src/TermSession.*): real terminal (forkpty + libvterm, TERM=xterm-256color). Props `shell` ("" = $SHELL or bash -l),
+  `cols`, `rows`, `running`, `title`, `cursorRow/Col/Visible`, `altScreen`, `scrollbackCount`, `appCursorKeys` (unused), `darkPalette`, `defaultFg/Bg`.
+  Methods `start()`, `resize(c, r)`, `write(text)` (paste/raw), `sendKey(qtKey, qtModifiers)`, `stop()`, `lineHtml(row)`, `scrollbackLineHtml(i)` (0 = oldest),
+  `screenText()`. Signals `rowsDamaged(first, last)` (16 ms batched), `screenReset()`, `titleChanged`, `bell()`, `finished(code)`.
+  Test hook: env FLOWDE_TERM_TEST="cmd; cmd" is typed into the first session.
 - No QtMultimedia / QtWebEngine / QtPositioning on the target. For media, camera or web content use external programs through
   Sys.launch after checking availability with `Sys.run("which", [prog])`; show an honest "not installed" state when missing.
   Installed on the VM: foot, firefox-esr, xdg-open. Never fake working hardware: demo content must be labelled.
