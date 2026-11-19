@@ -26,7 +26,7 @@ needed to run the shell.)
 ## Dependencies
 
 Build: CMake >= 3.21, Ninja, a C++17 compiler, Qt 6.5+ (6.8 tested) with
-Core, Gui, Qml, Quick, Network, DBus and ShaderTools.
+Core, Gui, Qml, Quick, Network, DBus and ShaderTools, plus libvterm.
 
 Runtime: Qt Wayland platform plugin, QtQuick modules (Controls not required),
 Sway, Python 3, `foot` (terminal app), and for the real device features
@@ -39,7 +39,7 @@ Debian / Kiln:
 ```bash
 sudo apt install build-essential cmake ninja-build pkg-config \
   qt6-base-dev qt6-declarative-dev qt6-shadertools-dev qt6-wayland \
-  qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes \
+  libvterm-dev qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-shapes \
   qml6-module-qt-labs-folderlistmodel \
   sway python3 foot network-manager wireplumber bluez brightnessctl
 ```
@@ -49,7 +49,7 @@ postmarketOS (Alpine). Package names below are from memory, check them with
 
 ```bash
 sudo apk add build-base cmake samurai pkgconf \
-  qt6-qtbase-dev qt6-qtdeclarative-dev qt6-qtshadertools-dev qt6-qtwayland \
+  qt6-qtbase-dev qt6-qtdeclarative-dev qt6-qtshadertools-dev qt6-qtwayland libvterm-dev \
   sway python3 foot networkmanager wireplumber bluez brightnessctl
 ```
 
