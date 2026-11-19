@@ -33,6 +33,7 @@ Item {
     function playEnter() { _exiting = false; enterRequested() }
     function playExit() { _exiting = true; exitRequested() }
     // rapid open/close: tiles snap straight back, no lay-down animation
+    property string heroTid: ""          // tile the open app came from: it returns first, so the closing app lands on a visible tile
     signal snapRequested
     function snapEnter() { _exiting = false; snapRequested() }
     function indexOfId(tid) { for (let i = 0; i < tileModel.count; i++) if (tileModel.get(i).tid === tid) return i; return -1 }
@@ -500,8 +501,8 @@ Item {
                     }
                     SequentialAnimation {
                         id: enterAnim
-                        PauseAnimation { duration: cell.lay ? Math.min(600, cell.lay.row * 70 + cell.lay.col * 35) : 0 }
-                        NumberAnimation { target: cell; property: "enterP"; to: 1; duration: Theme.turnstileMs + 80; easing.type: Easing.OutCubic }
+                        PauseAnimation { duration: cell.tid === root.heroTid ? 0 : (cell.lay ? Math.min(600, cell.lay.row * 70 + cell.lay.col * 35) : 0) + (root.heroTid !== "" ? 140 : 0) }
+                        NumberAnimation { target: cell; property: "enterP"; to: 1; duration: cell.tid === root.heroTid ? Theme.turnstileMs * 0.7 : Theme.turnstileMs + 80; easing.type: Easing.OutCubic }
                     }
                     SequentialAnimation {
                         id: exitAnim
@@ -525,6 +526,7 @@ Item {
                         glyphScale: cell.hasPhoto ? 0.8 : 1
                         onClicked: (r) => {
                             if (root.editing || Date.now() - root._editAt < 400) return
+                            root.heroTid = cell.tid
                             root.launched(cell.name, r, false)
                             root.playExit()
                         }
