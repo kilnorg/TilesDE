@@ -33,8 +33,7 @@ Item {
     ]
 
     // ---------- ring banners ----------
-    property var rings: []            // [{kind:"alarm"|"timer", text, alarmId}]
-    property var snoozes: []          // [{alarmId, text, until}]
+    readonly property var rings: LiveTiles.rings   // pending ringing alarms/timers; fired by the LiveTiles clock service even when this app is closed
 
     // ---------- stopwatch ----------
     property bool swRunning: false
@@ -144,57 +143,18 @@ Item {
         alarms = alarms.map(function(a) { if (a.id === id) { var c = Object.assign({}, a); c.on = v; return c } return a })
         save()
     }
-    function ring(kind, text, alarmId) {
-        var r = rings.slice()
-        r.push({ kind: kind, text: text, alarmId: alarmId })
-        rings = r
+    function dismissRing() { LiveTiles.ringPop() }
+    function snoozeRing() { LiveTiles.snoozeFirst() }
+    function tick() { nowMs = Date.now() }
+    function saveTimer() {
+        AppStore.save("clock-timer", tmState === "running" ? { state: "running", end: tmEnd, total: tmTotal }
+            : tmState === "paused" ? { state: "paused", left: tmPausedLeft, total: tmTotal } : { state: "idle" })
     }
-    function dismissRing() { rings = rings.slice(1) }
-    function snoozeRing() {
-        var r = rings[0]
-        if (!r) return
-        if (r.kind === "alarm") {
-            var s = snoozes.slice()
-            s.push({ alarmId: r.alarmId, text: r.text, until: Date.now() + 5 * 60000 })
-            snoozes = s
-        }
-        dismissRing()
-    }
-    function checkAlarms(d) {
-        var hh = d.getHours(), mm = d.getMinutes(), dow = (d.getDay() + 6) % 7
-        var changed = false
-        var list = alarms.map(function(a) {
-            if (!a.on || a.h !== hh || a.m !== mm) return a
-            var rep = false
-            for (var i = 0; i < 7; ++i) if (a.days[i]) rep = true
-            if (rep && !a.days[dow]) return a
-            ring("alarm", a.label !== "" ? a.label : "alarm", a.id)
-            if (!rep) { changed = true; var c = Object.assign({}, a); c.on = false; return c }
-            return a
-        })
-        if (changed) { alarms = list; save() }
-    }
-    function tick() {
-        nowMs = Date.now()
-        var d = new Date(nowMs)
-        var stamp = Math.floor(nowMs / 60000)
-        if (stamp !== lastMinuteStamp) {
-            // lastMinuteStamp < 0 means first tick: only fire if this very minute just started
-            if (lastMinuteStamp >= 0 || d.getSeconds() < 2) checkAlarms(d)
-            lastMinuteStamp = stamp
-        }
-        if (snoozes.length > 0) {
-            var keep = []
-            for (var i = 0; i < snoozes.length; ++i) {
-                if (nowMs >= snoozes[i].until) ring("alarm", snoozes[i].text, snoozes[i].alarmId)
-                else keep.push(snoozes[i])
-            }
-            if (keep.length !== snoozes.length) snoozes = keep
-        }
-        if (tmState === "running" && nowMs >= tmEnd) {
-            tmState = "idle"
-            ring("timer", "timer finished", -1)
-        }
+    function loadTimer() {
+        var t = AppStore.load("clock-timer", null)
+        if (t && t.state === "running" && t.end > Date.now()) { tmEnd = t.end; tmTotal = t.total; tmState = "running" }
+        else if (t && t.state === "paused") { tmPausedLeft = t.left; tmTotal = t.total; tmState = "paused" }
+        else tmState = "idle"
     }
 
     // ---------- stopwatch / timer ----------
@@ -212,14 +172,14 @@ Item {
     function tmStart() {
         var total = (tmH * 3600 + tmM * 60 + tmS) * 1000
         if (total <= 0) return
-        tmTotal = total; tmEnd = Date.now() + total; nowMs = Date.now(); tmState = "running"
+        tmTotal = total; tmEnd = Date.now() + total; nowMs = Date.now(); tmState = "running"; saveTimer()
     }
     function tmToggle() {
         if (tmState === "idle") tmStart()
-        else if (tmState === "running") { tmPausedLeft = Math.max(0, tmEnd - Date.now()); tmState = "paused" }
-        else { tmEnd = Date.now() + tmPausedLeft; nowMs = Date.now(); tmState = "running" }
+        else if (tmState === "running") { tmPausedLeft = Math.max(0, tmEnd - Date.now()); tmState = "paused"; saveTimer() }
+        else { tmEnd = Date.now() + tmPausedLeft; nowMs = Date.now(); tmState = "running"; saveTimer() }
     }
-    function tmReset() { tmState = "idle" }
+    function tmReset() { tmState = "idle"; saveTimer() }
 
     // ---------- world ----------
     function addCity(c) {
@@ -235,12 +195,19 @@ Item {
 
     Component.onCompleted: {
         var a = AppStore.load("clock-alarms", null)
-        alarms = Array.isArray(a) ? a : []
+        alarms = LiveTiles._list(a)
         var w = AppStore.load("clock-world", null)
         // default list when the store is empty: three common cities (not user data)
         worldCities = Array.isArray(w) ? w : [cityDb[7], cityDb[14], cityDb[33]]
         if (!Array.isArray(w)) saveWorld()
-        lastMinuteStamp = Math.floor(Date.now() / 60000)
+        loadTimer()
+    }
+    Connections {
+        target: AppStore
+        function onSaved(app) {
+            if (app === "clock-timer") root.loadTimer()
+            else if (app === "clock-alarms") { var a = AppStore.load("clock-alarms", null); root.alarms = LiveTiles._list(a) }
+        }
     }
 
     Timer {

@@ -1,99 +1,59 @@
 import QtQuick
 import FlowShell
 
-// Weather app. Offline demo data: deterministic pseudo-random values seeded from city name + date.
-// `provider` is the only data source; replace its functions with a real backend later (same return shapes).
+// Weather app. Real data from Open-Meteo (keyless) via LiveTiles.weatherRefresh/wxSearch; cached on disk, stale cache shown offline.
+// Places persisted in AppStore "weather-places": {places:[{name,lat,lon} | {auto:true,...}], unit, selected}.
 Item {
     id: root
     property real topInset: 36
     signal closeRequested
 
-    // ---- state (persisted under AppStore "weather-places") ----
-    property var places: Sys.demoData ? ["Barcelona", "London", "Tokyo"] : []
+    property var places: []
     property string unit: "C"
     property int selected: 0
-    readonly property string city: places.length > 0 ? places[Math.max(0, Math.min(selected, places.length - 1))] : ""
-    readonly property var now: Sys.demoData && city !== "" ? provider.current(city) : null
-    readonly property var days: city !== "" ? provider.daily(city, 7) : []
-    readonly property var hours: city !== "" ? provider.hourly(city, 24) : []
+    property int rev: 0
+    readonly property var place: places.length > 0 ? places[Math.max(0, Math.min(selected, places.length - 1))] : null
+    readonly property var wx: { rev; return LiveTiles.wxFor(place) }
+    readonly property string city: place ? (place.name || "my location") : ""
+    readonly property var now: wx && wx.cur ? { temp: wx.cur.temp, feels: wx.cur.feels, hi: wx.cur.hi, lo: wx.cur.lo,
+        condition: LiveTiles.wxText(wx.cur.code), wind: wx.cur.wind, humidity: wx.cur.hum, uv: Math.round(wx.cur.uv || 0), pressure: wx.cur.pres } : null
+    readonly property var days: {
+        var out = [], names = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+        if (!wx) return out
+        for (var i = 0; i < Math.min(7, wx.days.length); ++i) {
+            var d = wx.days[i], dt = new Date(d.date + "T12:00:00")
+            out.push({ label: i === 0 ? "today" : names[dt.getDay()], hi: d.hi, lo: d.lo, condition: LiveTiles.wxText(d.code) })
+        }
+        return out
+    }
+    readonly property var hours: wx ? wx.hours.map(function(h) { return { label: h.hh, temp: h.temp } }) : []
+    readonly property string status: {
+        rev
+        if (!place) return ""
+        if (!wx) return LiveTiles.weatherStatus === "offline" ? "offline. no saved data." : "loading..."
+        var age = Date.now() - wx.at
+        return (age > 3600000 || LiveTiles.weatherStatus === "offline" ? "offline, " : "") + "updated " + Qt.formatTime(new Date(wx.at), "hh:mm") + " \u00b7 open-meteo.com"
+    }
 
     function toU(c) { return Math.round(unit === "F" ? c * 9 / 5 + 32 : c) }
-    function tStr(c) { return toU(c) + "°" }
-    function save() { AppStore.save("weather-places", { places: places, unit: unit, selected: selected }) }
-    Component.onCompleted: {
+    function tStr(c) { return toU(c) + "\u00b0" }
+    function save() { AppStore.save("weather-places", { places: places, unit: unit, selected: selected }); LiveTiles.weatherRefresh(false); LiveTiles._weatherTile() }
+    function load() {
         var s = AppStore.load("weather-places", null)
         if (s && s.places) {
-            places = s.places
+            var l = Array.prototype.slice.call(s.places)
+            places = l.filter(function(p) { return p && typeof p === "object" })
             unit = s.unit === "F" ? "F" : "C"
             selected = s.selected || 0
         }
     }
-
-    // ---- data provider (offline demo) ----
-    QtObject {
-        id: provider
-        readonly property var cities: [
-            { name: "Barcelona", base: 19, amp: 7 }, { name: "London", base: 12, amp: 6 },
-            { name: "Tokyo", base: 17, amp: 9 }, { name: "New York", base: 14, amp: 11 },
-            { name: "Sydney", base: 21, amp: 6 }, { name: "Reykjavik", base: 4, amp: 5 },
-            { name: "Cairo", base: 27, amp: 8 }, { name: "Mumbai", base: 30, amp: 4 },
-            { name: "Sao Paulo", base: 23, amp: 5 }, { name: "Berlin", base: 10, amp: 8 },
-            { name: "Vancouver", base: 9, amp: 6 }, { name: "Cape Town", base: 18, amp: 6 }
-        ]
-        readonly property var conditions: ["clear", "partly cloudy", "cloudy", "light rain", "rain", "storm", "fog"]
-        function dayNumber(off) { return Math.floor(Date.now() / 86400000) + (off || 0) }
-        function hash(str) {
-            var h = 2166136261
-            for (var i = 0; i < str.length; ++i) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) }
-            return h >>> 0
-        }
-        function rng(seed) {
-            var a = seed >>> 0
-            return function() {
-                a = (a + 0x6D2B79F5) >>> 0
-                var t = a
-                t = Math.imul(t ^ (t >>> 15), t | 1)
-                t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-                return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-            }
-        }
-        function info(city) {
-            for (var i = 0; i < cities.length; ++i) if (cities[i].name === city) return cities[i]
-            return { name: city, base: 15, amp: 7 }
-        }
-        function builtinCities() { return !Sys.demoData ? [] : cities.map(function(c) { return c.name }) }
-        // day record for offset d (0 = today)
-        function dayRec(city, d) {
-            var ci = info(city), r = rng(hash(city) ^ Math.imul(dayNumber(d), 2654435761))
-            var mean = ci.base + (r() - 0.5) * ci.amp
-            var spread = 3 + r() * 4
-            return { hi: mean + spread / 2, lo: mean - spread / 2, cond: Math.floor(r() * conditions.length),
-                     wind: 3 + r() * 25, hum: 35 + r() * 55, uv: Math.floor(r() * 10), pres: 1000 + r() * 30, r: r }
-        }
-        function current(city) {
-            var d = dayRec(city, 0), hr = new Date().getHours()
-            var t = d.lo + (d.hi - d.lo) * (0.5 - 0.5 * Math.cos((hr - 4) / 24 * 2 * Math.PI))
-            return { temp: t, feels: t - 1 + (d.hum - 60) / 30, hi: d.hi, lo: d.lo, condition: conditions[d.cond],
-                     wind: d.wind, humidity: d.hum, uv: d.uv, pressure: d.pres }
-        }
-        function daily(city, n) {
-            var out = [], names = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
-            for (var i = 0; i < n; ++i) {
-                var d = dayRec(city, i), dt = new Date(Date.now() + i * 86400000)
-                out.push({ label: i === 0 ? "today" : names[dt.getDay()], hi: d.hi, lo: d.lo, condition: conditions[d.cond] })
-            }
-            return out
-        }
-        function hourly(city, n) {
-            var d = dayRec(city, 0), out = [], start = new Date().getHours()
-            for (var i = 0; i < n; ++i) {
-                var h = (start + i) % 24, dd = i + start >= 24 ? dayRec(city, 1) : d
-                var t = dd.lo + (dd.hi - dd.lo) * (0.5 - 0.5 * Math.cos((h - 4) / 24 * 2 * Math.PI))
-                out.push({ label: (h < 10 ? "0" : "") + h, temp: t })
-            }
-            return out
-        }
+    Component.onCompleted: {
+        load()
+        if (places.length === 0) { places = [{ auto: true }]; selected = 0; save() }   // first run: locate by IP
+        LiveTiles.weatherRefresh(false)
     }
+    Connections { target: LiveTiles; function onWeatherUpdated() { root.rev++ } }
+    Connections { target: AppStore; function onSaved(app) { if (app === "weather-places") root.load() } }
 
     Rectangle { anchors.fill: parent; color: Theme.pageBg }
 
@@ -122,7 +82,7 @@ Item {
             Text {
                 visible: root.now === null
                 width: parent.width; wrapMode: Text.Wrap
-                text: Sys.demoData ? "no places saved. add a city on the places page." : "no weather source yet. nothing to show."
+                text: root.place ? root.status : "no places saved. add a city on the places page."
                 color: Theme.textDim; font.family: Theme.font; font.pixelSize: 22
             }
             Column {
@@ -151,7 +111,7 @@ Item {
                     Block { width: parent.w; label: "pressure"; value: root.now ? Math.round(root.now.pressure) + " hPa" : "" }
                 }
                 Item { width: 1; height: 16 }
-                Text { text: "demo data (offline)"; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
+                Text { text: root.status; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
             }
         }
 
@@ -216,14 +176,27 @@ Item {
                 }
             }
             Item { width: 1; height: 12 }
-            Text { text: "demo data (offline)"; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
+            Text { text: root.status; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
         }
 
         PivotPage {
             title: "places"
             id: ppage
-            property int addIndex: 0
-            readonly property var available: provider.builtinCities().filter(function(c) { return root.places.indexOf(c) < 0 })
+            property var results: []
+            property string msg: ""
+            function find() {
+                var q = qf.text.trim()
+                if (q.length < 2) return
+                msg = "searching..."
+                LiveTiles.wxSearch(q, function(r) { results = r || []; msg = r === null ? "offline. try again later." : (r.length ? "" : "nothing found.") })
+            }
+            function add(p) {
+                for (var i = 0; i < root.places.length; ++i) if (!root.places[i].auto && root.places[i].lat === p.lat && root.places[i].lon === p.lon) return
+                root.places = root.places.concat([{ name: p.name, lat: p.lat, lon: p.lon }])
+                root.selected = root.places.length - 1
+                results = []; qf.text = ""
+                root.save()
+            }
 
             MetroToggle {
                 width: parent.width
@@ -242,12 +215,13 @@ Item {
                 model: root.places
                 MetroListRow {
                     id: prow
-                    required property string modelData
+                    required property var modelData
                     required property int index
-                    glyph: "weather"
-                    title: modelData
-                    subtitle: (index === root.selected ? "shown on today · " : "") + provider.current(modelData).condition
-                    trailing: root.tStr(provider.current(modelData).temp)
+                    readonly property var w: { root.rev; return LiveTiles.wxFor(modelData) }
+                    glyph: modelData.auto ? "maps" : "weather"
+                    title: (modelData.auto ? "my location" : modelData.name) + (modelData.auto && modelData.name ? " (" + modelData.name + ")" : "")
+                    subtitle: (index === root.selected ? "shown on today \u00b7 " : "") + (w && w.cur ? LiveTiles.wxText(w.cur.code) : "no data yet")
+                    trailing: w && w.cur ? root.tStr(w.cur.temp) : ""
                     onClicked: { root.selected = index; root.save(); pivot.goTo(0) }
                     onPressAndHold: {
                         var p = root.places.slice()
@@ -261,35 +235,38 @@ Item {
             Text { visible: root.places.length > 0; text: "tap to show, press and hold to remove"
                 color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
             MetroSectionHeader { text: "add a city" }
-            Item {
-                visible: ppage.available.length === 0
-                width: parent.width; height: 40
-                Text { text: "all built-in cities added."; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 22 }
-            }
-            MetroDropdown {
-                visible: ppage.available.length > 0
+            MetroTextField {
+                id: qf
                 width: parent.width
-                height: visible ? implicitHeight : 0
-                label: "city"
-                model: ppage.available
-                currentIndex: Math.min(ppage.addIndex, Math.max(0, ppage.available.length - 1))
-                onActivated: (i) => ppage.addIndex = i
+                placeholder: "search city"
+                onAccepted: ppage.find()
             }
-            Item { width: 1; height: 12 }
-            MetroButton {
-                visible: ppage.available.length > 0
-                text: "add"
-                accentFill: true
-                onClicked: {
-                    var c = ppage.available[Math.min(ppage.addIndex, ppage.available.length - 1)]
-                    if (c === undefined) return
-                    root.places = root.places.concat([c])
-                    ppage.addIndex = 0
-                    root.save()
+            Item { width: 1; height: 8 }
+            Row {
+                spacing: 12
+                MetroButton { text: "search"; accentFill: true; onClicked: ppage.find() }
+                MetroButton {
+                    text: "my location"
+                    onClicked: {
+                        for (var i = 0; i < root.places.length; ++i) if (root.places[i].auto) { root.selected = i; root.save(); return }
+                        root.places = root.places.concat([{ auto: true }])
+                        root.selected = root.places.length - 1
+                        root.save()
+                    }
+                }
+            }
+            Text { visible: ppage.msg !== ""; text: ppage.msg; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 20 }
+            Repeater {
+                model: ppage.results
+                MetroListRow {
+                    required property var modelData
+                    title: modelData.name
+                    subtitle: modelData.sub
+                    onClicked: ppage.add(modelData)
                 }
             }
             Item { width: 1; height: 12 }
-            Text { text: "demo data (offline)"; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
+            Text { text: root.status; color: Theme.textDim; font.family: Theme.font; font.pixelSize: 16 }
         }
     }
 }

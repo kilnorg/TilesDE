@@ -136,6 +136,7 @@ Item {
         switch (id) {
         case "calendar": return { face: "calendar", big: Qt.formatDate(d, "d"), line1: Qt.formatDate(d, "dddd"), line2: lt.title === "" ? "No upcoming events" : lt.title + ", " + lt.subtitle, img: "" }
         case "photos": return { face: "photo", big: "", line1: lt.title, line2: lt.subtitle, img: lt.imageSource }
+        case "weather": return { face: "weather", big: lt.big, line1: lt.title, line2: lt.subtitle, img: "" }
         case "people": return { face: "contact", big: "", line1: lt.title, line2: lt.subtitle, img: "" }
         default: return { face: "text", big: big, line1: lt.title, line2: lt.subtitle, img: lt.imageSource }
         }

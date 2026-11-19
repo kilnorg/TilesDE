@@ -84,13 +84,197 @@ QtObject {
         set("photos", list.length ? { title: "Photos", subtitle: list.length + (list.length === 1 ? " photo" : " photos"), imageSource: list[0].path } : { title: "", subtitle: "" })
     }
 
+    // ---- weather (Open-Meteo, keyless). Cache in AppStore "weather-cache" {key: {at, cur, days, hours}}; places in "weather-places".
+    // Place: {name, lat, lon} or {auto: true, name?, lat?, lon?} (located by IP at most every 6 h). Stale cache stays usable offline.
+    property var weather: ({})
+    property string weatherStatus: ""     // "", "loading", "offline"
+    signal weatherUpdated
+    function wxText(c) {
+        if (c === 0) return "clear"
+        if (c <= 2) return "partly cloudy"
+        if (c === 3) return "cloudy"
+        if (c === 45 || c === 48) return "fog"
+        if (c >= 51 && c <= 57) return "drizzle"
+        if (c === 61 || c === 63 || c === 80 || c === 81) return "rain"
+        if (c === 65 || c === 82) return "heavy rain"
+        if (c === 66 || c === 67) return "freezing rain"
+        if ((c >= 71 && c <= 77) || c === 85 || c === 86) return "snow"
+        if (c >= 95) return "storm"
+        return "cloudy"
+    }
+    function wxKey(p) { return p.lat.toFixed(2) + "," + p.lon.toFixed(2) }
+    function wxFor(p) { return p && p.lat !== undefined ? (weather[wxKey(p)] || null) : null }
+    function _get(url, cb) {
+        const x = new XMLHttpRequest()
+        x.onreadystatechange = function() {
+            if (x.readyState !== 4) return
+            let j = null
+            if (x.status === 200) { try { j = JSON.parse(x.responseText) } catch (e) { j = null } }
+            cb(j)
+        }
+        x.timeout = 20000
+        x.ontimeout = function() { }
+        x.open("GET", url)
+        x.send()
+    }
+    function wxSearch(q, cb) {
+        _get("https://geocoding-api.open-meteo.com/v1/search?count=6&language=en&format=json&name=" + encodeURIComponent(q), function(j) {
+            cb(j && j.results ? j.results.map(function(r) {
+                return { name: r.name, sub: [r.admin1, r.country].filter(function(v) { return v }).join(", "), lat: r.latitude, lon: r.longitude }
+            }) : null)
+        })
+    }
+    function wxLocate(p, cb) {
+        if (p.lat !== undefined && Date.now() - (p.locAt || 0) < 6 * 3600000) { cb(p); return }
+        _get("https://ipwho.is/", function(j) {
+            if (j && j.success !== false && j.latitude !== undefined)
+                cb(Object.assign({}, p, { name: j.city || "Here", lat: j.latitude, lon: j.longitude, locAt: Date.now() }))
+            else cb(p.lat !== undefined ? p : null)
+        })
+    }
+    function wxFetch(p, force, done) {
+        if (!p || p.lat === undefined) { if (done) done(false); return }
+        const k = wxKey(p), c = weather[k]
+        if (!force && c && Date.now() - c.at < 25 * 60000) { if (done) done(true); return }
+        const u = "https://api.open-meteo.com/v1/forecast?latitude=" + p.lat + "&longitude=" + p.lon +
+            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,surface_pressure,wind_speed_10m,weather_code" +
+            "&hourly=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code,uv_index_max" +
+            "&timezone=auto&forecast_days=8"
+        weatherStatus = "loading"
+        _get(u, function(j) {
+            if (!j || !j.current || !j.daily || !j.hourly) { weatherStatus = "offline"; weatherUpdated(); if (done) done(false); return }
+            const d = j.daily, h = j.hourly, cur = j.current, out = { at: Date.now(), days: [], hours: [] }
+            for (let i = 0; i < d.time.length; ++i)
+                out.days.push({ date: d.time[i], hi: d.temperature_2m_max[i], lo: d.temperature_2m_min[i], code: d.weather_code[i], uv: d.uv_index_max[i] })
+            const nowIso = cur.time
+            let s = 0
+            for (let i = 0; i < h.time.length; ++i) if (h.time[i] >= nowIso.slice(0, 13)) { s = i; break }
+            for (let i = s; i < Math.min(s + 24, h.time.length); ++i)
+                out.hours.push({ hh: h.time[i].slice(11, 13), temp: h.temperature_2m[i], code: h.weather_code[i] })
+            out.cur = { temp: cur.temperature_2m, feels: cur.apparent_temperature, hum: cur.relative_humidity_2m, pres: cur.surface_pressure,
+                        wind: cur.wind_speed_10m, code: cur.weather_code, hi: d.temperature_2m_max[0], lo: d.temperature_2m_min[0], uv: d.uv_index_max[0] }
+            const w = Object.assign({}, weather); w[k] = out
+            // keep only the 12 newest places
+            const ks = Object.keys(w).sort(function(a, b) { return w[b].at - w[a].at }).slice(0, 12), w2 = {}
+            ks.forEach(function(x) { w2[x] = w[x] })
+            weather = w2
+            AppStore.save("weather-cache", weather)
+            weatherStatus = ""
+            weatherUpdated()
+            _weatherTile()
+            if (done) done(true)
+        })
+    }
+    // selected place of the Weather app (resolving "my location"), then fetch + update the tile
+    function weatherRefresh(force) {
+        const s = AppStore.load("weather-places", null)
+        const list = s && s.places ? _list(s.places) : []
+        if (!list.length) { _weatherTile(); return }
+        const i = Math.max(0, Math.min(s.selected | 0, list.length - 1)), p = list[i]
+        if (p && p.auto) {
+            wxLocate(p, function(r) {
+                if (!r) { weatherStatus = "offline"; _weatherTile(); return }
+                if (r.lat !== p.lat) {
+                    const l2 = list.slice(); l2[i] = r
+                    AppStore.save("weather-places", Object.assign({}, s, { places: l2 }))
+                }
+                wxFetch(r, force)
+            })
+        } else wxFetch(p, force)
+    }
+    function _weatherTile() {
+        const s = AppStore.load("weather-places", null), list = s && s.places ? _list(s.places) : []
+        const p = list.length ? list[Math.max(0, Math.min(s.selected | 0, list.length - 1))] : null
+        const w = wxFor(p), f = s && s.unit === "F"
+        if (!w || !w.cur) { set("weather", { title: "", subtitle: "" }); return }
+        const t = function(c) { return Math.round(f ? c * 9 / 5 + 32 : c) + "\u00b0" }
+        set("weather", { title: p.name + ", " + wxText(w.cur.code), subtitle: "\u2191" + t(w.cur.hi) + " \u2193" + t(w.cur.lo), big: t(w.cur.temp) })
+    }
+    property Timer _wx: Timer { interval: 30 * 60000; running: true; repeat: true; onTriggered: root.weatherRefresh(false) }
+
+    // ---- clock service: alarms / timer fire here (always running), not only while the Clock app is open ----
+    // Stores: "clock-alarms" [{id,h,m,label,days,on}], "clock-timer" {state:"running",end,total}|{state:"paused",left,total}.
+    // Ringing = pending `rings` list ([{kind,text,alarmId}]) + a notification + looping sound until the Clock app (or lock/notif) dismisses.
+    property var rings: []
+    property var _snoozes: []
+    property double _clkStamp: -1
+    property var _tm: null
+    property int _beeps: 0
+    signal ringFired
+    function _loadTimer() { const t = AppStore.load("clock-timer", null); _tm = t && !Array.isArray(t) ? t : null }
+    function ringPush(kind, text, id) {
+        rings = rings.concat([{ kind: kind, text: text, alarmId: id }])
+        Services.notifications.add("clock", kind === "alarm" ? "Alarm" : "Timer", text)
+        _beeps = 0; _beep.restart(); _beepNow()
+        ringFired()
+    }
+    function ringPop() { rings = rings.slice(1); if (!rings.length) _beep.stop() }
+    function snoozeFirst() {
+        const r = rings[0]
+        if (!r) return
+        if (r.kind === "alarm") _snoozes = _snoozes.concat([{ alarmId: r.alarmId, text: r.text, until: Date.now() + 5 * 60000 }])
+        ringPop()
+    }
+    function _beepNow() {
+        if (typeof Sys === "undefined") return
+        const f = "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
+        if (Sys.exists(f)) Sys.launch("paplay", [f])
+    }
+    property Timer _beep: Timer { interval: 3500; repeat: true; onTriggered: { if (++root._beeps > 30 || !root.rings.length) stop(); else root._beepNow() } }
+    function _clockCheck(d) {
+        const hh = d.getHours(), mm = d.getMinutes(), dow = (d.getDay() + 6) % 7
+        const list = _arr("clock-alarms"); let changed = false
+        const out = list.map(function(a) {
+            if (!a.on || a.h !== hh || a.m !== mm) return a
+            const days = _list(a.days), rep = days.some(function(x) { return x })
+            if (rep && !days[dow]) return a
+            ringPush("alarm", a.label ? a.label : "alarm", a.id)
+            if (!rep) { changed = true; const c = Object.assign({}, a); c.on = false; return c }
+            return a
+        })
+        if (changed) AppStore.save("clock-alarms", out)
+        // calendar events starting now, and a 09:00 digest of reminders due today or overdue
+        const today = _ds(d), hm = _p2(hh) + ":" + _p2(mm)
+        _arr("calendar-events").forEach(function(e) {
+            if (e.date === today && e.start === hm) Services.notifications.add("calendar", e.title, e.start + (e.place ? " \u00b7 " + e.place : ""))
+        })
+        if (hh === 9 && mm === 0) {
+            const rd = _arr("reminders").filter(function(r) { return !r.done && r.due && r.due <= today })
+            if (rd.length) Services.notifications.add("reminders", rd.length === 1 ? rd[0].title : rd.length + " reminders due", rd.length === 1 ? "Due today" : rd[0].title + ", ...")
+        }
+    }
+    function _clockTick() {
+        const now = Date.now(), stamp = Math.floor(now / 60000)
+        if (stamp !== _clkStamp) {
+            const d = new Date(now)
+            if (_clkStamp >= 0 || d.getSeconds() < 3) _clockCheck(d)
+            _clkStamp = stamp
+        }
+        if (_snoozes.length) {
+            const keep = []
+            _snoozes.forEach(function(sn) { if (now >= sn.until) ringPush("alarm", sn.text, sn.alarmId); else keep.push(sn) })
+            if (keep.length !== _snoozes.length) _snoozes = keep
+        }
+        if (_tm && _tm.state === "running" && now >= _tm.end) {
+            _tm = null
+            AppStore.save("clock-timer", { state: "idle" })
+            ringPush("timer", "timer finished", -1)
+        }
+    }
+    property Timer _clk: Timer { interval: 1000; running: true; repeat: true; onTriggered: root._clockTick() }
+
     property Connections _notifs: Connections { target: Services.notifications; function onCountChanged() { root._soon.restart() } }
     property Timer _tick: Timer { interval: 60000; running: true; repeat: true; onTriggered: root.refresh() }
     property Timer _soon: Timer { interval: 400; onTriggered: root.refresh() }
     Component.onCompleted: {
         const v = AppStore.load("livetiles", {})
         tiles = (v && !Array.isArray(v)) ? v : {}
-        AppStore.saved.connect(function(app) { if (app !== "livetiles") root._soon.restart() })
+        AppStore.saved.connect(function(app) { if (app === "clock-timer") root._loadTimer(); if (app !== "livetiles") root._soon.restart() })
+        _loadTimer()
+        _clkStamp = Math.floor(Date.now() / 60000)
+        const wc = AppStore.load("weather-cache", {})
+        weather = (wc && !Array.isArray(wc)) ? wc : {}
         refresh()
+        weatherRefresh(false)
     }
 }
