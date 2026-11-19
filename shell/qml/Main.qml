@@ -105,12 +105,13 @@ Window {
     Timer { id: launchTimer; interval: 8000; onTriggered: if (win.appLaunching) win.gesture("home") }
     
     property string page: ["shade","centre","search","apps","edit","alpha"].indexOf(StartPage) >= 0 ? "home" : StartPage
+    property bool lockDragging: false
     property real lockP: StartPage === "lock" ? 0 : 1
     property real shadeP: StartPage === "shade" ? 1 : 0
     property real switchP: StartPage === "switcher" ? 1 : 0
     onPageChanged: { lockP = page === "lock" ? 0 : 1; switchP = page === "switcher" ? 1 : 0; appP = page === "app" ? 1 : 0 }
 
-    Behavior on lockP { enabled: !lockDrag.active && !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002; mass: 1; modulus: 0 } }
+    Behavior on lockP { enabled: !win.lockDragging && !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002; mass: 1; modulus: 0 } }
     Behavior on shadeP { enabled: !shadeDrag.active && !shadeCloseDrag.active && !Theme.reduceMotion; SpringAnimation { spring: 3.4; damping: 0.3; epsilon: 0.002 } }
     Behavior on switchP { enabled: !Theme.reduceMotion; SpringAnimation { spring: 3.2; damping: 0.32; epsilon: 0.002 } }
 
@@ -337,21 +338,29 @@ Window {
         }
 
         // lock: swipe up. Full-size pickable layer so the home screen underneath never takes the touch.
-        Item {
+        // MouseArea (touch is delivered as synthesized mouse), follows the finger 1:1, releases into the spring on lockP.
+        MouseArea {
+            id: lockArea
             anchors.fill: parent; z: 19
-            visible: win.page === "lock"
-            DragHandler {
-                id: lockDrag
-                enabled: win.page === "lock"
-                target: null; xAxis.enabled: false; dragThreshold: 4
-                grabPermissions: PointerHandler.CanTakeOverFromAnything
-                // lock screen follows the finger 1:1 (LockScreen.y = -progress * height)
-                onTranslationChanged: if (active) win.lockP = Math.max(0, Math.min(1, -translation.y / root.height))
-                onActiveChanged: if (!active) {
-                    if (win.lockP > 0.25 || centroid.velocity.y < -900) win.page = "home"
-                    else { win.page = "lock"; win.lockP = 0 }
-                }
+            enabled: win.page === "lock"; visible: win.page === "lock"
+            property real y0: 0
+            property real ly: 0
+            property real lt: 0
+            property real vy: 0
+            onPressed: (m) => { y0 = m.y; ly = m.y; lt = Date.now(); vy = 0; win.lockDragging = true }
+            onPositionChanged: (m) => {
+                const now = Date.now(), dt = now - lt
+                if (dt > 0) vy = 0.6 * vy + 0.4 * ((m.y - ly) / dt * 1000)
+                ly = m.y; lt = now
+                win.lockP = Math.max(0, Math.min(1, -(m.y - y0) / root.height))
             }
+            function _end() {
+                win.lockDragging = false
+                if (win.lockP > 0.25 || vy < -900) win.page = "home"
+                else { win.page = "lock"; win.lockP = 0 }
+            }
+            onReleased: _end()
+            onCanceled: _end()
         }
 
         StatusBar { id: sbar; anchors { top: parent.top; left: parent.left; right: parent.right } z: 20; ink: win.lockP < 0.5 ? "white" : Theme.text }
