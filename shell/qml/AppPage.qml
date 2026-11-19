@@ -181,12 +181,6 @@ Item {
         } }
     Component { id: emptyC
         Item {
-            Column { anchors { top: parent.top; topMargin: 20; left: parent.left; right: parent.right; margins: Theme.pageMargin + 4 } spacing: Theme.tileGap
-                Block { width: parent.width; height: 120; label: root.name; value: root.launching ? "starting" : "ready" }
-                Row { spacing: Theme.tileGap
-                    Block { width: (parent.parent.width - Theme.tileGap) / 2; height: 120; label: "recent"; value: "3" }
-                    Block { width: (parent.parent.width - Theme.tileGap) / 2; height: 120; label: "new"; value: "1" } }
-                Text { topPadding: 14; text: "prototype page. nothing here yet."; color: Theme.textDim; font.pixelSize: 15; font.family: Theme.font }
-            }
+            Text { anchors.centerIn: parent; text: "Starting..."; color: Theme.textDim; font.pixelSize: 22; font.family: Theme.font; font.weight: Theme.fontLight }
         } }
 }

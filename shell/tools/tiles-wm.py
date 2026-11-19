@@ -71,7 +71,7 @@ def place(i):
     r = shell_rect()
     if not r: return
     s = r["width"] / DESIGN_W
-    top, bot = round(TOP * s), round(BOTTOM * s)
+    top, bot = round(TOP * s), round((BOTTOM + kbh) * s)
     sway(f"[con_id={i}] floating enable, border none, resize set width {r['width']} px height {r['height'] - top - bot} px, "
          f"move absolute position {r['x']} {r['y'] + top}")
 
@@ -81,6 +81,7 @@ def settle(i):
     for d in (0.4, 1.0, 2.2):
         threading.Timer(d, lambda: place(i) if i in wins and i not in hidden and shown == i else None).start()
 
+kbh = 0.0        # on-screen keyboard height (design units): windows shrink above it
 fly = None       # tile rect (design units x,y,w,h) the next window opens from / closes into
 gens = {}        # per-window animation generation: a new show/hide of THAT window cancels its old animation; other windows animate in parallel
 
@@ -88,7 +89,7 @@ def frame():
     r = shell_rect()
     if not r: return None
     s = r["width"] / DESIGN_W
-    top, bot = round(TOP * s), round(BOTTOM * s)
+    top, bot = round(TOP * s), round((BOTTOM + kbh) * s)
     return r["x"], r["y"] + top, r["width"], r["height"] - top - bot, s, r
 
 def tile_box(fr):
@@ -183,6 +184,10 @@ def commands():
                 elif p[0] == "from":
                     global fly
                     fly = [float(v) for v in p[1:5]]
+                elif p[0] == "kb":
+                    global kbh
+                    kbh = float(p[1])
+                    if shown: place(shown)
                 elif p[0] == "hide": hide()
                 elif p[0] == "close": close(int(p[1]))
                 elif p[0] == "closeall":

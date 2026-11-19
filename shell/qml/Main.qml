@@ -176,7 +176,42 @@ Window {
     }
 
     // on-screen keyboard: shown while a text field has focus (TilesKeyboard types into that field)
+    // third-party windows: the OSK types into them through wtype (virtual keyboard protocol); toggled by the tab above the nav bar
+    property bool extOsk: false
+    onExtShownChanged: if (extShown <= 0) extOsk = false
+    Item {
+        id: extTarget
+        property string text: ""
+        property int cursorPosition: 0
+        readonly property int length: text.length
+        property int inputMethodHints: 0
+        property int selectionStart: 0
+        property int selectionEnd: 0
+        property string selectedText: ""
+        property bool readOnly: false
+        property var _q: []
+        Timer { id: extFlush; interval: 25; onTriggered: { const a = extTarget._q; extTarget._q = []; if (a.length) Sys.launch("wtype", a) } }
+        function _push(args) { _q = _q.concat(args); extFlush.restart() }
+        function insert(p, t) {
+            text = text.slice(0, p) + t + text.slice(p)
+            const parts = t.split("\n")
+            const a = []
+            for (let i = 0; i < parts.length; ++i) {
+                if (i > 0) a.push("-k", "Return")
+                if (parts[i] === "-") a.push("-k", "minus"); else if (parts[i] !== "") a.push(parts[i])
+            }
+            _push(a)
+        }
+        function remove(s, e) {
+            text = text.slice(0, s) + text.slice(e)
+            const a = []
+            for (let i = 0; i < e - s; ++i) a.push("-k", "BackSpace")
+            _push(a)
+        }
+        function accepted() { _push(["-k", "Return"]) }
+    }
     readonly property Item focusTarget: {
+        if (win.extOsk) return extTarget
         const f = win.activeFocusItem
         return (f && typeof f.cursorPosition === "number" && typeof f.insert === "function" && !f.readOnly) ? f : null
     }
@@ -207,8 +242,8 @@ Window {
     // Back: the first closer that has something to close consumes the gesture (topmost layer first).
     function backStack() {
         const closers = [
-            () => { if (extShown <= 0) return false; wmSend("close " + extShown); return true },             // third-party window
             () => { if (!kb.shown) return false; oskDismissed = true; return true },                          // keyboard
+            () => { if (extShown <= 0) return false; wmSend("close " + extShown); return true },             // third-party window
             () => { if (shadeP <= 0.5) return false; shadeP = 0; return true },                              // shade / quick settings
             () => { if (overlay === "") return false; overlay = ""; return true },                           // overlay (controls gallery)
             () => { if (!settingsOpen) return false; settings.back(); return true },                         // settings pages
@@ -354,6 +389,15 @@ Window {
             onHideRequested: win.oskDismissed = true
             transform: Translate { y: win.kbInApp ? Math.max(0, Math.min(1, 1 - win.appP)) * (kb.height + 56) : 0 }
         }
+        // keyboard tab for third-party windows (they have no text-input hook yet)
+        Rectangle {
+            z: 44; visible: win.extShown > 0 && !kb.shown && win.lockP > 0.9
+            width: 64; height: 26; color: Theme.dark ? "#cc202020" : "#ccdddddd"
+            anchors { right: parent.right; bottom: parent.bottom; bottomMargin: 56; rightMargin: 12 }
+            Text { anchors.centerIn: parent; text: "\u2328"; color: Theme.text; font.pixelSize: 18 }
+            MouseArea { anchors.fill: parent; anchors.margins: -8; onClicked: { extTarget.text = ""; extTarget.cursorPosition = 0; win.extOsk = true; win.oskDismissed = false } }
+        }
+        Connections { target: kb; function onVisibleHChanged() { win.wmSend("kb " + (win.extShown > 0 ? Math.round(kb.visibleH) : 0)) } }
         NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             visible: win.lockP > 0.9
