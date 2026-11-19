@@ -7,12 +7,25 @@
 #include "AppModel.h"
 #include "AppStore.h"
 #include "Sys.h"
+#include "ImBridge.h"
 #include "Personalise.h"
+#include "Session.h"
 #include "Services.h"
 
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
     app.setApplicationName("flowde-shell");
+    // Compositor mode: the shell is the Wayland compositor and owns the session (QtWayland.Compositor, see qml/CompositorLayer.qml).
+    // Default: on whenever Qt is not itself a Wayland/X11/desktop client (eglfs/linuxfb on a phone). TILES_COMPOSITOR=1 forces it
+    // (nested inside Sway for development), TILES_COMPOSITOR=0 forces the Sway-hosted mode (tiles-wm.py).
+    const QString plat = QGuiApplication::platformName(), forced = qEnvironmentVariable("TILES_COMPOSITOR");
+    const bool hosted = plat == "wayland" || plat == "wayland-egl" || plat == "xcb" || plat == "cocoa" || plat == "windows" || plat == "offscreen" || plat == "minimal";
+    const bool compositorMode = forced == "1" || (forced != "0" && !hosted);
+    const QString socket = qEnvironmentVariable("TILES_SOCKET", "tiles-0");
+    if (compositorMode) {
+        qputenv("TILES_COMPOSITOR_ACTIVE", "1");
+        qputenv("WAYLAND_DISPLAY", socket.toUtf8());        // children (Sys.launch / AppModel.launch) connect to the shell
+    }
     // personalisation store (QML singleton "Personalise"); created here so env overrides apply before the UI loads.
     // FLOWDE_PRESET=<preset>, FLOWDE_SCHEME=dark|amoled|light override the stored values (and are saved like any change).
     Personalise *pers = Personalise::instance();
@@ -22,11 +35,17 @@ int main(int argc, char **argv) {
     AppModel apps;
     AppStore appStore;
     Sys sys;
+    Session session(compositorMode);
+    ImBridge imBridge;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("Services", &services);
     engine.rootContext()->setContextProperty("Apps", &apps);
     engine.rootContext()->setContextProperty("AppStore", &appStore);
     engine.rootContext()->setContextProperty("Sys", &sys);
+    engine.rootContext()->setContextProperty("Session", &session);
+    engine.rootContext()->setContextProperty("ImBridge", &imBridge);
+    engine.rootContext()->setContextProperty("CompositorMode", compositorMode);
+    engine.rootContext()->setContextProperty("CompositorSocket", socket);
     engine.rootContext()->setContextProperty("StartPage", qEnvironmentVariable("FLOWDE_START", "lock"));
     engine.rootContext()->setContextProperty("StartTheme", qEnvironmentVariable("FLOWDE_THEME", "Tiles"));
     // FLOWDE_SIZE=WxH: window size (default 540x1170, the design size). The UI scales to the window width.

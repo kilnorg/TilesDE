@@ -1,5 +1,6 @@
 #include <QRegularExpression>
 #include "AppModel.h"
+#include "ChildEnv.h"
 #include <QDir>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -67,10 +68,7 @@ bool AppModel::launch(int row) {
     QString exec = m_apps[row].exec;
     exec.replace(QRegularExpression("%[a-zA-Z]"), "");
     QProcess p;
-    QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
-    e.insert("TILES_MANAGED", "1"); e.insert("MOZ_ENABLE_WAYLAND", "1"); e.insert("MOZ_USE_XINPUT2", "1");
-    e.insert("GTK_CSD", "0"); e.insert("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1");
-    p.setProcessEnvironment(e); p.setProgram("/bin/sh"); p.setArguments({"-c", exec.trimmed()});
+    p.setProcessEnvironment(childEnv()); p.setProgram("/bin/sh"); p.setArguments({"-c", exec.trimmed()});
     return p.startDetached();
 }
 

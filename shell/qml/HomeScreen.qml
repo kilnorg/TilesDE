@@ -102,7 +102,7 @@ Item {
         // tiles turn back as soon as the app is closing (dim falling), not after it has fully gone; a re-launch reverses them
         if (_exited && dim < _lastDim && dim < 0.2) {
             _exited = false
-            settleTimer.interval = (Date.now() - _launchAt < 1200) ? 380 : 1; settleTimer.restart()
+            settleTimer.interval = (Date.now() - _launchAt < 3000) ? 900 : 1; settleTimer.restart()
         }
         _lastDim = dim
     }

@@ -82,7 +82,7 @@ def settle(i):
         threading.Timer(d, lambda: place(i) if i in wins and i not in hidden and shown == i else None).start()
 
 fly = None       # tile rect (design units x,y,w,h) the next window opens from / closes into
-anim_gen = 0     # bumped by every show/hide: stale animations stop, so spamming open/close stays seamless
+gens = {}        # per-window animation generation: a new show/hide of THAT window cancels its old animation; other windows animate in parallel
 
 def frame():
     r = shell_rect()
@@ -97,10 +97,12 @@ def tile_box(fr):
     if fly: return r["x"] + fly[0] * s, r["y"] + fly[1] * s, max(8, fly[2] * s), max(8, fly[3] * s)
     return x + w / 2 - 20, y + h / 2 - 20, 40, 40
 
+def cur(i): return gens.get(i, 0)
+
 def animate(i, a, b, dur, gen):
     steps = max(1, int(dur / 0.022))
     for k in range(1, steps + 1):
-        if gen != anim_gen: return False
+        if gen != cur(i): return False
         e = 1 - (1 - k / steps) ** 3
         v = [a[j] + (b[j] - a[j]) * e for j in range(4)]
         sway(f"[con_id={i}] resize set width {max(8, round(v[2]))} px height {max(8, round(v[3]))} px, move absolute position {round(v[0])} {round(v[1])}")
@@ -111,14 +113,14 @@ def fly_in(i, gen):
     if not fr: place(i); return
     a, b = tile_box(fr), fr[:4]
     sway(f"[con_id={i}] floating enable, border none, resize set width {round(a[2])} px height {round(a[3])} px, move absolute position {round(a[0])} {round(a[1])}")
-    if animate(i, a, b, 0.26, gen) and gen == anim_gen: settle(i)
+    if animate(i, a, b, 0.26, gen) and gen == cur(i): settle(i)
 
 def show(i):
-    global shown, anim_gen
+    global shown
     with mu:
         if i not in wins: return
-        if shown and shown != i: hide(quick=True)
-        anim_gen += 1; gen = anim_gen
+        if shown and shown != i: hide()
+        gens[i] = cur(i) + 1; gen = gens[i]
         if i in hidden:
             sway(f"[con_id={i}] scratchpad show"); hidden.discard(i)
         sway(f"[con_id={i}] focus"); shown = i; save()
@@ -129,18 +131,17 @@ def _fly_out(i, gen):
     if fr:
         animate(i, fr[:4], tile_box(fr), 0.2, gen)
     with mu:
-        if gen == anim_gen and i in wins and i not in hidden:
+        if gen == cur(i) and i in wins and i not in hidden:
             sway(f"[con_id={i}] move scratchpad"); hidden.add(i)
 
-def hide(quick=False):
-    global shown, anim_gen
+def hide():
+    global shown
     with mu:
         i = shown
-        anim_gen += 1; gen = anim_gen
+        gens[i] = cur(i) + 1; gen = gens[i]
         shown = 0; save()
         if i in wins and i not in hidden:
-            if quick: sway(f"[con_id={i}] move scratchpad"); hidden.add(i)
-            else: threading.Thread(target=_fly_out, args=(i, gen), daemon=True).start()
+            threading.Thread(target=_fly_out, args=(i, gen), daemon=True).start()
     sway("[app_id=flowde-shell] focus")
 
 def close(i):

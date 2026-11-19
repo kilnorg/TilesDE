@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QObject>
 #include <QTimer>
+#include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
 // Native session integration (context property "Session"): logind (power button, suspend, lock, idle, backlight),
@@ -43,6 +44,9 @@ signals:
     void resumed();
     void volumeKey(int dir);              // +1 / -1
     void idle();                          // no input for idleTimeout seconds
+private slots:
+    void onPrepareForSleep(bool start);
+    void onSensorProps(const QString &iface, const QVariantMap &changed, const QStringList &);
 private:
     void setupLogind();
     void setupSensors();
