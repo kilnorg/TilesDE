@@ -92,7 +92,7 @@ Item {
     property bool _tilesOut: false
     property real _launchAt: 0
     // tiles fly in on the LAST close: during rapid open/close they stay out and the entrance waits until things settle
-    Timer { id: settleTimer; interval: 380; onTriggered: if (root._tilesOut && !root._exited) { root._tilesOut = false; start.playEnter() } }
+    Timer { id: settleTimer; interval: 380; onTriggered: if (!root._exited) { root._tilesOut = false; start.playEnter() } }
     onLaunched: {
         _exited = true; _launchAt = Date.now(); settleTimer.stop()
         if (!_tilesOut) { _tilesOut = true; start.playExit() }
@@ -102,13 +102,13 @@ Item {
         // tiles turn back as soon as the app is closing (dim falling), not after it has fully gone; a re-launch reverses them
         if (_exited && dim < _lastDim && dim < 0.2) {
             _exited = false
-            if (_tilesOut) { if (Date.now() - _launchAt < 1200) settleTimer.restart(); else { _tilesOut = false; start.playEnter() } }
+            settleTimer.interval = (Date.now() - _launchAt < 1200) ? 380 : 1; settleTimer.restart()
         }
         _lastDim = dim
     }
     onOpacityChanged: {
         if (opacity < 0.05) _hidden = true
-        else if (_hidden && opacity > 0.5 && !_exited) { _hidden = false; if (!_tilesOut) start.playEnter() }
+        else if (_hidden && opacity > 0.5 && !_exited) { _hidden = false; _tilesOut = false; start.playEnter() }
     }
 
     // search overlay (flat, black)

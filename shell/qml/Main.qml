@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import FlowShell
+import "apps/index.js" as NativeApps
 
 Window {
     id: win
