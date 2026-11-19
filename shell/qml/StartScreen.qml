@@ -509,6 +509,15 @@ Item {
                                 anchors.fill: parent
                                 active: cell.picture
                                 sourceComponent: TileFaces { face: "scene"; seed: root.hashOf(cell.tid) }
+                            },
+                            // numeric badge: lives on the front face so it tilts/flips with the tile
+                            Text {
+                                visible: Theme.showBadges && cell.badge > 0 && !root.editing
+                                anchors { right: parent.right; top: parent.top; rightMargin: 9; topMargin: 2 }
+                                text: cell.badge
+                                color: tile.ink
+                                font.family: Theme.font; font.weight: Theme.fontLight
+                                font.pixelSize: cell.size === "small" ? Math.round(cell.width * 0.34) : 46
                             }
                         ]
 
@@ -530,16 +539,6 @@ Item {
                         anchors.fill: parent; anchors.margins: -3
                         color: "transparent"; border.width: 3; border.color: Theme.text
                         radius: Theme.tileRadius > 0 ? Theme.tileRadius + 3 : 0
-                    }
-
-                    // numeric badge (front face only), big WP8 style
-                    Text {
-                        visible: Theme.showBadges && cell.badge > 0 && !root.editing && !tile.showingBack
-                        anchors { right: parent.right; top: parent.top; rightMargin: 9; topMargin: 2 }
-                        text: cell.badge
-                        color: tile.ink
-                        font.family: Theme.font; font.weight: Theme.fontLight
-                        font.pixelSize: cell.size === "small" ? Math.round(cell.width * 0.34) : 46
                     }
 
                     // edit mode: drag surface; a plain tap selects the tile for the colour sheet
