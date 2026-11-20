@@ -1,5 +1,8 @@
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#ifdef HAVE_WEBENGINE
+#include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#endif
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -11,6 +14,9 @@
 #include "Services.h"
 
 int main(int argc, char **argv) {
+#ifdef HAVE_WEBENGINE
+    QtWebEngineQuick::initialize();   // must run before the QGuiApplication exists
+#endif
     QGuiApplication app(argc, argv);
     app.setApplicationName("flowde-shell");
     // personalisation store (QML singleton "Personalise"); created here so env overrides apply before the UI loads.

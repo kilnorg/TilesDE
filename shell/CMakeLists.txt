@@ -6,6 +6,7 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network DBus ShaderTools)
 qt_standard_project_setup(REQUIRES 6.5)
 find_package(PkgConfig REQUIRED)
+find_package(Qt6 6.5 QUIET OPTIONAL_COMPONENTS WebEngineQuick)   # optional: in-shell browser (apk add qt6-qtwebengine qt6-qtwebengine-dev)
 pkg_check_modules(VTERM REQUIRED IMPORTED_TARGET vterm)
 
 option(TILES_DEMO_DATA "Seed demo mail/contacts/notes/calendar/music/weather data (dev only; env TILES_DEMO=1 also enables it at runtime)" OFF)
@@ -25,6 +26,9 @@ set(QML_FILES qml/Main.qml qml/Theme.qml qml/GlassPanel.qml qml/Wallpaper.qml qm
   qml/settings2/SettingsNetwork.qml qml/settings2/SettingsAbout.qml qml/settings2/SettingsSound.qml qml/settings2/SettingsEmail.qml
   qml/settings2/SettingsDevices.qml
   qml/apps/index.js qml/apps/ClockApp.qml qml/apps/CalculatorApp.qml qml/apps/CalendarApp.qml qml/apps/NotesApp.qml qml/apps/PhoneApp.qml qml/apps/PeopleApp.qml qml/apps/MessagesApp.qml qml/apps/WeatherApp.qml qml/apps/MusicApp.qml qml/apps/MailApp.qml qml/apps/FilesApp.qml qml/apps/BrowserApp.qml qml/apps/CameraApp.qml qml/apps/GamesApp.qml qml/apps/MapsApp.qml qml/apps/NoxalApp.qml qml/apps/PhotosApp.qml qml/apps/PodcastsApp.qml qml/apps/RadioApp.qml qml/apps/RecorderApp.qml qml/apps/RemindersApp.qml qml/apps/StoreApp.qml qml/apps/TerminalApp.qml qml/apps/VideosApp.qml qml/apps/WalletApp.qml)
+if(TARGET Qt6::WebEngineQuick)
+  list(APPEND QML_FILES qml/apps/BrowserWeb.qml)
+endif()
 set_source_files_properties(qml/Theme.qml qml/LiveTiles.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(flowde-shell URI FlowShell VERSION 1.0 SOURCES src/Personalise.cpp src/Personalise.h src/Sys.cpp src/Sys.h src/TermSession.cpp src/TermSession.h src/StoreBackend.cpp src/StoreBackend.h QML_FILES ${QML_FILES} NO_RESOURCE_TARGET_PATH)
@@ -36,6 +40,12 @@ qt_add_resources(flowde-shell "assets" PREFIX "/FlowShell" FILES ${ASSET_FILES})
 target_include_directories(flowde-shell PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(flowde-shell PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network Qt6::DBus PkgConfig::VTERM util)
 install(TARGETS flowde-shell RUNTIME DESTINATION bin)
+
+if(TARGET Qt6::WebEngineQuick)
+  message(STATUS "Qt WebEngine found: building the in-shell browser")
+  target_link_libraries(flowde-shell PRIVATE Qt6::WebEngineQuick)
+  target_compile_definitions(flowde-shell PRIVATE HAVE_WEBENGINE)
+endif()
 
 if(TILES_DEMO_DATA)
   target_compile_definitions(flowde-shell PRIVATE TILES_DEMO_DATA)

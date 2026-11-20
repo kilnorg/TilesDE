@@ -334,4 +334,16 @@ Item {
             }
         }
     }
+
+    // In-shell WebEngine browser when this build has it (BrowserWeb.qml exists only then); the launcher UI above is the fallback.
+    Loader {
+        id: web
+        anchors.fill: parent
+        z: 100
+        source: "BrowserWeb.qml"
+        visible: status === Loader.Ready
+        active: true
+        onLoaded: { item.topInset = root.topInset; item.forceActiveFocus() }
+    }
+    Connections { target: web.item; ignoreUnknownSignals: true; function onCloseRequested() { root.closeRequested() } }
 }
