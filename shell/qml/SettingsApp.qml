@@ -29,6 +29,12 @@ Item {
         live = stack.count
         _top = name
     }
+    // called by the shell before every open: drop leftover/leaving pages so the layer can never come up blank
+    function reset() {
+        for (var i = stack.count - 1; i >= 1; --i) stack.remove(i)
+        live = 1; _top = "home"
+        const b = rep.itemAt(0); if (b) { b.cover = 0; b.p = 1 }
+    }
     function goHome(instant) {
         for (var i = stack.count - 1; i >= 1; --i) {
             if (instant) stack.remove(i); else stack.setProperty(i, "leaving", true)

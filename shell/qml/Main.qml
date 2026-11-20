@@ -46,6 +46,7 @@ Window {
     function openSettings(name) {
         shadeP = 0; home.searchOpen = false; overlay = ""
         if (page === "lock") page = "home"
+        if (!settingsOpen) settings.reset()
         settingsOpen = true
         if (name !== "") settings.open(name)
         settings.forceActiveFocus()
