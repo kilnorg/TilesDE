@@ -135,7 +135,13 @@ Window {
         else if (StartPage === "edit") home.start.enterEdit()
         else if (StartPage === "alpha") { home.showApps(); home.allApps.alpha.open = true }
     }
+    property bool powerMenu: false
+    property bool asleep: false          // screen off: stop idle animations/timers
+    property real powerY: 0
     function screenCmd(v) {
+        if (v === "powermenu") { shadeP = 0; powerY = 0; powerMenu = true; return }
+        if (v === "wake") { asleep = false; return }
+        if (v === "sleep") { asleep = true; powerMenu = false; shadeP = 0; settingsOpen = false; overlay = ""; page = "lock"; return }
         if (v === "settings") { openSettings("home"); return }
         if (v === "settings-theme") { openSettings("start+theme"); return }
         if (v === "settings-lock") { openSettings("lock screen"); return }
@@ -247,6 +253,7 @@ Window {
     // Back: the first closer that has something to close consumes the gesture (topmost layer first).
     function backStack() {
         const closers = [
+            () => { if (!powerMenu) return false; powerMenu = false; return true },
             () => { if (!kb.shown) return false; oskDismissed = true; return true },                          // keyboard
             () => { if (extShown <= 0) return false; wmSend("close " + extShown); return true },             // third-party window
             () => { if (shadeP <= 0.5) return false; shadeP = 0; return true },                              // shade / quick settings
@@ -277,7 +284,7 @@ Window {
             width: root.width; height: root.height
             textureSize: Qt.size(Math.max(1, root.width / 4), Math.max(1, root.height / 4))
             smooth: true
-            Timer { interval: 1500; running: !Theme.reduceMotion && Theme.quality < 2; repeat: true; onTriggered: bsrc.scheduleUpdate() }
+            Timer { interval: 1500; running: !Theme.reduceMotion && Theme.quality < 2 && !win.asleep; repeat: true; onTriggered: bsrc.scheduleUpdate() }
             Connections { target: Theme; function onWallpaperSourceChanged() { Qt.callLater(bsrc.scheduleUpdate) } function onNameChanged() { Qt.callLater(bsrc.scheduleUpdate) } function onDarkChanged() { Qt.callLater(bsrc.scheduleUpdate) } }
             Timer { interval: 400; running: true; onTriggered: bsrc.scheduleUpdate() }
         }
@@ -323,7 +330,7 @@ Window {
             visible: win.overlay === "controls"
             Loader { anchors.fill: parent; anchors.topMargin: 36; anchors.bottomMargin: 56; active: parent.visible; sourceComponent: ControlsGallery {} }
         }
-        LockScreen { id: lock; anchors.fill: parent; progress: win.lockP }
+        LockScreen { id: lock; anchors.fill: parent; progress: win.lockP; asleep: win.asleep }
 
         // left-edge back swipe: current page follows the finger, the previous one peeks beneath
         EdgeBackGesture {
@@ -410,6 +417,44 @@ Window {
             MouseArea { anchors.fill: parent; anchors.margins: -8; onClicked: { extTarget.text = ""; extTarget.cursorPosition = 0; win.extOsk = true; win.oskDismissed = false } }
         }
         Connections { target: kb; function onVisibleHChanged() { win.wmSend("kb " + (win.extShown > 0 ? Math.round(kb.visibleH) : 0)) } }
+        // power menu: hold the power button; swipe down to power off
+        Item {
+            id: pwr
+            z: 60; anchors.fill: parent
+            visible: win.powerMenu
+            opacity: win.powerMenu ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 160 } }
+            property bool going: false
+            Rectangle { anchors.fill: parent; color: "black"; opacity: 0.88 }
+            MouseArea { anchors.fill: parent }
+            Rectangle {
+                id: pcard
+                width: parent.width; height: parent.height
+                y: Math.max(0, win.powerY) - (pwr.going ? 0 : 0)
+                color: Theme.accent
+                Behavior on y { enabled: !pdrag.active && !pwr.going; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                Column {
+                    anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 120; leftMargin: 36; rightMargin: 36 }
+                    spacing: 18
+                    Text { text: pwr.going ? "powering off..." : "swipe down to power off"; color: Theme.onColor(Theme.accent); font.pixelSize: 38; font.weight: Font.Light; wrapMode: Text.WordWrap; width: parent.width }
+                    Text { visible: !pwr.going; text: "restart"; color: Theme.onColor(Theme.accent); font.pixelSize: 26; opacity: 0.85
+                        MouseArea { anchors.fill: parent; anchors.margins: -16; onClicked: { pwr.going = true; Sys.launch("systemctl", ["reboot"]) } } }
+                    Text { visible: !pwr.going; text: "cancel"; color: Theme.onColor(Theme.accent); font.pixelSize: 26; opacity: 0.85
+                        MouseArea { anchors.fill: parent; anchors.margins: -16; onClicked: win.powerMenu = false } }
+                }
+                Rectangle { anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 90 } width: 90; height: 6; radius: 3; color: Theme.onColor(Theme.accent); opacity: 0.6; visible: !pwr.going }
+                DragHandler {
+                    id: pdrag
+                    target: null; xAxis.enabled: false
+                    enabled: !pwr.going
+                    onTranslationChanged: if (active) win.powerY = Math.max(0, translation.y)
+                    onActiveChanged: if (!active) {
+                        if (win.powerY > root.height * 0.3) { pwr.going = true; win.powerY = root.height; Sys.launch("systemctl", ["poweroff"]) }
+                        else win.powerY = 0
+                    }
+                }
+            }
+        }
         NavBar {
             z: 50; anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             visible: opacity > 0.01

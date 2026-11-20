@@ -195,12 +195,73 @@ def commands():
                 elif p[0] == "replace" and shown: place(shown)
             except Exception as ex: print("cmd error", line, ex, file=sys.stderr)
 
+# ---- power button: short press = screen off / on, hold = power menu (swipe down to power off) ----
+import socket
+pwr_down_t = 0.0
+pwr_timer = None
+hold_fired = False
+
+def shell_set(key, val):
+    try:
+        c = socket.socket(socket.AF_UNIX); c.settimeout(1)
+        c.connect(RT + "/flowde-shell.sock")
+        c.send((json.dumps({"set": key, "value": val}) + "\n").encode()); c.close()
+    except Exception as ex: print("shell_set", ex, file=sys.stderr)
+
+POWER = "/usr/local/bin/tilesde-power"     # backlight 0 + touch off + lock (DPMS is unreliable on this panel)
+FLAG = RT + "/tilesde-screen-off"
+
+def screen_is_off(): return os.path.exists(FLAG)
+
+def screen_sleep():
+    shell_set("screen", "sleep")        # shell stops idle animations and locks
+    time.sleep(0.25)
+    subprocess.run([POWER])
+
+def screen_wake():
+    subprocess.run([POWER])
+    shell_set("screen", "wake")
+
+def pwr_hold():
+    global hold_fired
+    hold_fired = True
+    if not screen_is_off(): shell_set("screen", "powermenu")
+    else: screen_wake()
+
+def on_binding(e):
+    global pwr_down_t, pwr_timer, hold_fired
+    cmd = (e.get("binding") or {}).get("command", "")
+    if cmd == "nop pwr_down":
+        if pwr_timer and pwr_timer.is_alive(): return     # key repeat
+        hold_fired = False
+        if pwr_timer: pwr_timer.cancel()
+        pwr_timer = threading.Timer(0.7, pwr_hold); pwr_timer.start()
+    elif cmd == "nop pwr_up":
+        if pwr_timer: pwr_timer.cancel()
+        if not hold_fired:
+            if not screen_is_off(): screen_sleep()
+            else: screen_wake()
+
+def power_setup():
+    # logind would power off on the key: take its inhibitor (works as the session user)
+    try: subprocess.Popen(["systemd-inhibit", "--what=handle-power-key", "--who=TilesDE", "--why=shell handles the power button", "--mode=block", "sleep", "infinity"])
+    except Exception as ex: print("inhibit", ex, file=sys.stderr)
+    sway("bindsym", "--locked", "XF86PowerOff", "nop", "pwr_down")           # overrides sway.conf's tilesde-power binding
+    sway("bindsym", "--locked", "--release", "XF86PowerOff", "nop", "pwr_up")
+    while True:
+        p = subprocess.Popen(["swaymsg", "-t", "subscribe", "-m", '["binding"]'], stdout=subprocess.PIPE, text=True)
+        for line in p.stdout:
+            try: on_binding(json.loads(line))
+            except Exception as ex: print("binding error", ex, file=sys.stderr)
+        time.sleep(2)
+
 def main():
     lk = open(LOCK, "w")
     try: fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError: return
     save()
     threading.Thread(target=commands, daemon=True).start()
+    threading.Thread(target=power_setup, daemon=True).start()
     while True:
         p = subprocess.Popen(["swaymsg", "-t", "subscribe", "-m", '["window"]'], stdout=subprocess.PIPE, text=True)
         for line in p.stdout:

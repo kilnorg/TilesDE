@@ -14,15 +14,16 @@ Item {
     readonly property int mailCount: _count("mail", "mail")
     readonly property int messageCount: _count("messages", "message")
     readonly property int calendarCount: _count("calendar", "")
+    property bool asleep: false
     property real bounce: 0            // hint lift in px, animated while idle
-    Timer { interval: 5000; running: root.visible; repeat: true; onTriggered: root.now = new Date() }
+    Timer { interval: 5000; running: root.visible && !root.asleep; repeat: true; onTriggered: root.now = new Date() }
     // slides up with the finger (progress = fraction of height); never fades. Opaque wallpaper copy covers the home screen beneath.
     transform: Translate { y: Math.min(0, -root.progress * root.height) - root.bounce }
     visible: progress < 0.999
 
     // bounce hint: lifts 24px, settles, every 6s while idle
     SequentialAnimation {
-        running: root.progress < 0.01 && root.visible && !Theme.reduceMotion
+        running: root.progress < 0.01 && root.visible && !Theme.reduceMotion && !root.asleep
         loops: Animation.Infinite
         PauseAnimation { duration: 6000 }
         NumberAnimation { target: root; property: "bounce"; to: 24; duration: 260; easing.type: Easing.OutCubic }
