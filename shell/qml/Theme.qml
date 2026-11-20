@@ -117,6 +117,7 @@ QtObject {
     readonly property real tileRadius: tiles ? Personalise.tileRadius : cur.tileRadius
 
     // surface glass level: 0 full lensing, 1 blur only, 2 flat. Forced flat by reduce-transparency or flat-surface themes.
+    property bool animPause: false      // screen off or an app covers the home screen: idle/live animations stop
     readonly property int quality: (reduceTransparency || !cur.surfGlass) ? 2 : glass === "flat" ? 2 : glass === "blur" ? 1 : 0
     // icon glass level: same ladder, but only for themes with glass icons.
     readonly property int iconQuality: (reduceTransparency || !cur.iconGlass) ? 2 : glass === "flat" ? 2 : glass === "blur" ? 1 : 0

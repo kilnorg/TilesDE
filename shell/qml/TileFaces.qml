@@ -251,7 +251,7 @@ Item {
                         required property int index
                         width: 5; height: 8 + index * 4; color: root.ink; anchors.bottom: parent.bottom
                         SequentialAnimation on height {
-                            running: root.animate && !Theme.reduceMotion && m.visible
+                            running: root.animate && !Theme.reduceMotion && m.visible && !Theme.animPause
                             loops: Animation.Infinite
                             NumberAnimation { to: 24 - index * 4; duration: 380 + index * 90; easing.type: Easing.InOutSine }
                             NumberAnimation { to: 6 + index * 2; duration: 380 + index * 70; easing.type: Easing.InOutSine }

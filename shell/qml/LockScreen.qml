@@ -32,7 +32,7 @@ Item {
 
     ShaderEffectSource { id: bd; anchors.fill: parent; z: -2; sourceItem: Theme.backdropItem; live: false; hideSource: false
         Component.onCompleted: scheduleUpdate()
-        Timer { interval: 2000; running: root.visible && root.progress < 0.01; repeat: true; onTriggered: bd.scheduleUpdate() } }
+        Timer { interval: 4000; running: root.visible && root.progress < 0.01 && !root.asleep; repeat: true; onTriggered: bd.scheduleUpdate() } }
 
     // subtle scrim so light text reads on any wallpaper
     Rectangle { anchors.fill: parent; z: -1

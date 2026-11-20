@@ -7,7 +7,7 @@ Item {
     height: 28
     property color ink: "#ffffff"
     property date now: new Date()
-    Timer { interval: 10000; running: true; repeat: true; onTriggered: root.now = new Date() }
+    Timer { interval: 10000; running: !Services.asleep; repeat: true; triggeredOnStart: true; onTriggered: root.now = new Date() }
 
     // left cluster: signal + wifi; right cluster: battery + clock (flat, thin, no pills)
     Row {

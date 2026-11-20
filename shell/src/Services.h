@@ -78,11 +78,13 @@ class Services : public QObject {
     Q_PROPERTY(bool reduceMotion MEMBER m_reduceMotion NOTIFY changed)
     Q_PROPERTY(NotifModel *notifications READ notifications CONSTANT)
     Q_PROPERTY(bool mock READ mock CONSTANT)
+    Q_PROPERTY(bool asleep READ asleep NOTIFY asleepChanged)   // screen off: pollers stopped
 public:
     explicit Services(QObject *p = nullptr);
     NotifModel *notifications() { return &m_notifs; }
     int battery() const { return m_battery; }
     bool mock() const { return m_mock; }
+    bool asleep() const { return m_asleep; }
     bool wifi() const { return m_wifi; }
     bool bluetooth() const { return m_bt; }
     bool airplane() const { return m_airplane; }
@@ -95,6 +97,7 @@ public:
     void setVolume(double v);
     Q_INVOKABLE void send(const QString &json);   // shell -> compositor
 signals:
+    void asleepChanged();
     void changed();
     void gesture(const QString &name);            // home|back|switcher|shade|qs|rotate
     void command(const QString &key, const QString &value);  // test/theme hook
@@ -112,6 +115,7 @@ private:
     bool m_wifiAvail = false, m_btAvail = false, m_battAvail = false, m_volAvail = false, m_brightAvail = false;
     QString m_glass = "full", m_wifiName, m_backlight;
     qint64 m_holdUntil = 0;
+    bool m_asleep = false;
     NotifModel m_notifs;
     QLocalServer m_server;
     QList<QLocalSocket *> m_clients;

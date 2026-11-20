@@ -84,7 +84,7 @@ Window {
     readonly property var extNames: extWins.map(w => w._n)
     function extPick(name) { const w = extWins.find(o => o._n === name); if (w) wmSend("show " + w.id); return !!w }
     Timer {
-        interval: 400; repeat: true; running: win.wmScript !== ""
+        interval: 400; repeat: true; running: win.wmScript !== "" && !win.asleep; triggeredOnStart: true
         onTriggered: {
             const t = Sys.readText(Sys.runtimeDir() + "/tiles-wm.json", 65536)
             if (t === "" || t === win._extRaw) return
@@ -137,6 +137,7 @@ Window {
         else if (StartPage === "alpha") { home.showApps(); home.allApps.alpha.open = true }
     }
     property bool powerMenu: false
+    Binding { target: Theme; property: "animPause"; value: win.asleep || win.appP > 0.99 }
     property bool asleep: false          // screen off: stop idle animations/timers
     property real powerY: 0
     function screenCmd(v) {
@@ -276,7 +277,7 @@ Window {
         // design width 540; height follows the window aspect
         width: 540; height: Math.round(win.height * 540 / Math.max(1, win.width))
         scale: win.width / 540; transformOrigin: Item.TopLeft
-        Wallpaper { id: wall; anchors.fill: parent; visible: win.lockP < 0.995 }
+        Wallpaper { id: wall; anchors.fill: parent; visible: win.lockP < 0.995; active: win.appP < 0.99 }
         Rectangle { anchors.fill: parent; color: "black"; opacity: win.lockP }
         // one shared, quarter-resolution snapshot of the wallpaper feeds every glass panel
         ShaderEffectSource {
@@ -285,7 +286,7 @@ Window {
             width: root.width; height: root.height
             textureSize: Qt.size(Math.max(1, root.width / 4), Math.max(1, root.height / 4))
             smooth: true
-            Timer { interval: 1500; running: !Theme.reduceMotion && Theme.quality < 2 && !win.asleep; repeat: true; onTriggered: bsrc.scheduleUpdate() }
+            Timer { interval: 4000; running: !Theme.reduceMotion && Theme.quality < 2 && !win.asleep && win.appP < 0.99; repeat: true; onTriggered: bsrc.scheduleUpdate() }
             Connections { target: Theme; function onWallpaperSourceChanged() { Qt.callLater(bsrc.scheduleUpdate) } function onNameChanged() { Qt.callLater(bsrc.scheduleUpdate) } function onDarkChanged() { Qt.callLater(bsrc.scheduleUpdate) } }
             Timer { interval: 400; running: true; onTriggered: bsrc.scheduleUpdate() }
         }

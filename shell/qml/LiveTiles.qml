@@ -261,10 +261,11 @@ QtObject {
             ringPush("timer", "timer finished", -1)
         }
     }
-    property Timer _clk: Timer { interval: 1000; running: true; repeat: true; onTriggered: root._clockTick() }
+    property Timer _clk: Timer { interval: Services.asleep ? 5000 : 1000; running: true; repeat: true; onTriggered: root._clockTick() }
 
     property Connections _notifs: Connections { target: Services.notifications; function onCountChanged() { root._soon.restart() } }
-    property Timer _tick: Timer { interval: 60000; running: true; repeat: true; onTriggered: root.refresh() }
+    property Timer _tick: Timer { interval: 60000; running: !Services.asleep; repeat: true; onTriggered: root.refresh() }
+    property Connections _sleepWake: Connections { target: Services; function onAsleepChanged() { if (!Services.asleep) root._soon.restart() } }
     property Timer _soon: Timer { interval: 400; onTriggered: root.refresh() }
     Component.onCompleted: {
         const v = AppStore.load("livetiles", {})

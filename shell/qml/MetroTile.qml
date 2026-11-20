@@ -113,7 +113,7 @@ Item {
     // flip schedule: one-time stagger pause, then every period: hold front, flip to back, hold, flip on to front
     SequentialAnimation {
         id: flipper
-        running: root.live && root.flipEnabled && !Theme.reduceMotion && root.visible
+        running: root.live && root.flipEnabled && !Theme.reduceMotion && root.visible && !Theme.animPause
         onRunningChanged: if (!running) root.flipAngle = 0
         PauseAnimation { duration: (root.index * Theme.flipStaggerMs * 3) % Theme.flipPeriodMs }
         SequentialAnimation {

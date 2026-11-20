@@ -204,7 +204,7 @@ Services::Services(QObject *p) : QObject(p) {
     m_brightTimer.setSingleShot(true); m_brightTimer.setInterval(80);
     poll();
     connect(&m_pollTimer, &QTimer::timeout, this, &Services::poll);
-    m_pollTimer.start(5000);
+    m_pollTimer.start(10000);
 
     QString path = qEnvironmentVariable("FLOWDE_SHELL_SOCKET");
     if (path.isEmpty()) {
@@ -327,6 +327,13 @@ void Services::onLine(const QByteArray &line) {
         if (k == "glass") { m_glass = v; emit changed(); }
         else if (k == "reduceTransparency") { m_reduceTransp = v == "1" || v == "true"; emit changed(); }
         else if (k == "reduceMotion") { m_reduceMotion = v == "1" || v == "true"; emit changed(); }
+        else if (k == "screen" && (v == "sleep" || v == "wake")) {
+            const bool a = v == "sleep";
+            if (a != m_asleep) {
+                m_asleep = a; emit asleepChanged();
+                if (a) m_pollTimer.stop(); else { poll(); m_pollTimer.start(10000); }
+            }
+        }
         emit command(k, v);
     } else if (o.contains("get")) {   // {"get":"config"|<key>}: reply comes back from QML via send()
         emit command("get", o["get"].toVariant().toString());

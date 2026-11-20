@@ -5,7 +5,13 @@ Item {
     id: root
     // procedural wallpaper (no assets); animated phase is slow and off when reduce-motion
     property real phase: 0.6
-    NumberAnimation on phase { from: 0.6; to: 6.88; duration: 90000; loops: Animation.Infinite; running: !Theme.reduceMotion && Theme.wallpaperSource === "" && root.visible }
+    // 1 Hz steps instead of a 60 fps animation: a full-screen shader redraw every vsync was the biggest idle GPU cost.
+    property bool active: true
+    Timer {
+        interval: 1000; repeat: true
+        running: root.active && !Theme.reduceMotion && Theme.wallpaperSource === "" && root.visible && !Services.asleep
+        onTriggered: root.phase = root.phase + 0.0698 > 6.88 ? 0.6 : root.phase + 0.0698
+    }
     Image {
         anchors.fill: parent; visible: Theme.wallpaperSource !== ""
         source: Theme.wallpaperSource; fillMode: Image.PreserveAspectCrop; asynchronous: false; smooth: true
