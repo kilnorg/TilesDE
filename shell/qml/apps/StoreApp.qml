@@ -1,8 +1,8 @@
 import QtQuick
 import FlowShell
 
-// Store: Debian apt (apt-cache / apt-get / dpkg) + Flathub (appstream API v2, flatpak --user). All work is async in StoreBackend (src/StoreBackend.*).
-// Offline: apt keeps working, Flathub falls back to the API cache in ~/.cache/tilesde/store; icons and screenshots are cached there too.
+// Store: Alpine/postmarketOS apk (apk search/info/add/del via sudo) + Flathub (appstream API v2, flatpak --user). All work is async in StoreBackend (src/StoreBackend.*).
+// Offline: apk keeps working, Flathub falls back to the API cache in ~/.cache/tilesde/store; icons and screenshots are cached there too.
 Item {
     id: root
     property real topInset: 36
@@ -14,13 +14,13 @@ Item {
     property string query: ""
     property string category: "all"
     property int token: 1
-    property var aptItems: []
+    property var apkItems: []
     property var flatItems: []
     property bool flatMore: false
     property int flatPage: 1
     property string flatState: "loading"      // loading | ok | cached | offline
-    property bool aptDone: false
-    property var featApt: []
+    property bool apkDone: false
+    property var featApk: []
     property var featFlat: []
     property var instItems: []
     property bool instLoaded: false
@@ -32,17 +32,27 @@ Item {
     property bool detailLoading: false
     property string detailError: ""
     property bool confirmRemove: false
+    property var gameApk: []
+    property var gameFlat: []
+    readonly property var games: gameFlat.slice(0, 12).concat(gameApk)
+    property bool pwOpen: false
+    property string pwError: ""
+    property var pwPending: null           // function to run once the sudo password is verified
+    function needPw(fn) {
+        if (be.needsPassword) { pwPending = fn; pwError = ""; pwOpen = true; pwField.text = ""; return true }
+        return false
+    }
     property string toast: ""
     readonly property var categories: ["all", "internet", "media", "graphics", "office", "utilities", "development", "games", "system", "education", "science"]
-    readonly property var merged: aptItems.concat(flatItems)
-    readonly property var featured: featFlat.slice(0, 2).concat(featApt.slice(0, 1))
+    readonly property var merged: apkItems.concat(flatItems)
+    readonly property var featured: featFlat.slice(0, 2).concat(featApk.slice(0, 1))
 
     function key(src, id) { return src + ":" + id }
     function isInstalled(src, id) { return be.installedKeys[src + ":" + id] !== undefined }
-    function sourceLabel(src) { return src === "apt" ? "debian apt" : "flathub" }
+    function sourceLabel(src) { return src === "apk" ? "apk" : "flathub" }
     function reload() {
         token++
-        aptItems = []; flatItems = []; flatMore = false; flatPage = 1; flatState = "loading"; aptDone = false
+        apkItems = []; flatItems = []; flatMore = false; flatPage = 1; flatState = "loading"; apkDone = false
         if (query.trim().length >= 2) be.search(token, query.trim()); else be.browse(token, category, 1)
     }
     function loadMore() { if (flatMore) be.browse(token, category, flatPage + 1) }
@@ -51,13 +61,29 @@ Item {
         be.details(item.source, item.id)
     }
     function say(t) { toast = t; toastTimer.restart() }
-    function doInstall() { be.install(cur.source, cur.id) }
+    function doInstall() {
+        var src = cur.source, id = cur.id
+        if (src === "apk" && needPw(function() { be.install(src, id) })) return
+        be.install(src, id)
+    }
     function doRemove() {
         if (!confirmRemove) { confirmRemove = true; confirmTimer.restart(); return }
-        confirmRemove = false; be.remove(cur.source, cur.id)
+        confirmRemove = false
+        var src = cur.source, id = cur.id
+        if (src === "apk" && needPw(function() { be.remove(src, id) })) return
+        be.remove(src, id)
+    }
+    function doUpdateAll() {
+        if (needPw(function() { be.upgradeAll() })) return
+        be.upgradeAll()
+    }
+    function doCheck() {
+        updChecking = true
+        if (needPw(function() { be.checkUpdates(true) })) { updChecking = false; return }
+        be.checkUpdates(true)
     }
 
-    Component.onCompleted: { be.refresh(); be.browse(0, "all", 1); reload() }
+    Component.onCompleted: { be.refresh(); be.browse(0, "all", 1); be.browse(-1, "games", 1); reload() }
     Timer { id: searchTimer; interval: 400; onTriggered: root.reload() }
     Timer { id: toastTimer; interval: 5000; onTriggered: root.toast = "" }
     Timer { id: confirmTimer; interval: 4000; onTriggered: root.confirmRemove = false }
@@ -66,11 +92,15 @@ Item {
         target: be
         function onResults(tok, source, items, page, hasMore, offline) {
             if (tok === 0) {
-                if (source === "apt") root.featApt = items; else root.featFlat = items
+                if (source === "apk") root.featApk = items; else root.featFlat = items
+                return
+            }
+            if (tok === -1) {
+                if (source === "apk") root.gameApk = items; else root.gameFlat = items
                 return
             }
             if (tok !== root.token) return
-            if (source === "apt") { root.aptItems = items; root.aptDone = true; return }
+            if (source === "apk") { root.apkItems = items; root.apkDone = true; return }
             root.flatItems = page > 1 ? root.flatItems.concat(items) : items
             root.flatPage = page; root.flatMore = hasMore
             root.flatState = offline ? "cached" : "ok"
@@ -88,6 +118,10 @@ Item {
         function onDetailsFailed(src, id, msg) {
             if (root.detailOpen && id === root.cur.id) { root.detailLoading = false; root.detailError = msg }
         }
+        function onPasswordChecked(ok) {
+            if (ok) { root.pwOpen = false; var f = root.pwPending; root.pwPending = null; if (f) f() }
+            else root.pwError = "wrong password"
+        }
         function onInstalledListReady(items) { root.instItems = items; root.instLoaded = true }
         function onUpdatesReady(items, refreshed, note) {
             root.updChecking = false; root.updItems = items
@@ -102,7 +136,7 @@ Item {
     }
 
     focus: true
-    function back() { if (detailOpen) detailOpen = false; else closeRequested() }
+    function back() { if (pwOpen) pwOpen = false; else if (detailOpen) detailOpen = false; else closeRequested() }
     Keys.onEscapePressed: back()
     Keys.onBackPressed: back()
 
@@ -198,9 +232,9 @@ Item {
             title: "featured"
             Hint {
                 visible: be.escalation === "none"
-                text: "no passwordless sudo/pkexec here: installs open in a terminal instead."
+                text: "no sudo here: apk installs open in a terminal instead."
             }
-            Hint { visible: root.flatState === "offline"; text: "offline: flathub unavailable, showing debian apt only." }
+            Hint { visible: root.flatState === "offline"; text: "offline: flathub unavailable, showing apk only." }
             Repeater {
                 model: root.featured
                 Item {
@@ -208,16 +242,16 @@ Item {
                     required property var modelData
                     required property int index
                     readonly property color tint: index === 0 ? Theme.accent : (index === 1 ? Qt.darker(Theme.accent, 1.5) : Qt.darker(Theme.accent, 2.2))
-                    width: parent.width; height: 188
+                    width: parent.width; height: index === 0 ? 288 : 188
                     Rectangle {
-                        width: parent.width; height: 180; color: parent.tint
+                        width: parent.width; height: index === 0 ? 280 : 180; color: parent.tint
                         opacity: fma.pressed ? 0.7 : 1
                         Column {
-                            x: 16; y: 14; width: parent.width - 32 - (tileIcon.ready ? 96 : 0); spacing: 4
+                            x: 16; y: 14; width: parent.width - 32 - (tileIcon.ready ? (tile.index === 0 ? 160 : 96) : 0); spacing: 4
                             Text {
                                 width: parent.width; elide: Text.ElideRight; text: tile.modelData.name.toLowerCase()
                                 color: Theme.onColor(tile.tint)
-                                font.family: Theme.font; font.pixelSize: 44; font.weight: Theme.fontLight
+                                font.family: Theme.font; font.pixelSize: tile.index === 0 ? 56 : 44; font.weight: Theme.fontLight
                             }
                             Text {
                                 width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
@@ -226,7 +260,7 @@ Item {
                                 font.family: Theme.font; font.pixelSize: 22
                             }
                         }
-                        RemoteImage { id: tileIcon; x: parent.width - 112; y: 16; width: 96; height: 96; url: tile.modelData.icon || ""; decodeW: 192 }
+                        RemoteImage { id: tileIcon; x: parent.width - (tile.index === 0 ? 176 : 112); y: tile.index === 0 ? 24 : 16; width: tile.index === 0 ? 160 : 96; height: width; url: tile.modelData.icon || ""; decodeW: 256 }
                         Text {
                             x: 16; y: parent.height - 36
                             text: root.sourceLabel(tile.modelData.source) + (root.isInstalled(tile.modelData.source, tile.modelData.id) ? "  ·  installed" : "")
@@ -241,7 +275,7 @@ Item {
                 visible: root.featured.length === 0
                 text: "loading..."
             }
-            Hint { topPadding: 8; text: "sources: debian apt (this system) and flathub. open the apps tab to search and browse categories." }
+            Hint { topPadding: 8; text: "sources: apk (this system) and flathub. open the apps tab to search and browse categories." }
         }
 
         PivotPage {
@@ -281,11 +315,11 @@ Item {
                 }
             }
             Item { width: 1; height: 12 }
-            Hint { visible: root.flatState === "offline"; text: "offline: flathub unreachable. showing debian apt only." }
+            Hint { visible: root.flatState === "offline"; text: "offline: flathub unreachable. showing apk only." }
             Hint { visible: root.flatState === "cached"; text: "offline: flathub results come from the local cache." }
-            Hint { visible: root.flatState === "loading" || !root.aptDone; text: "loading..." }
+            Hint { visible: root.flatState === "loading" || !root.apkDone; text: "loading..." }
             Hint {
-                visible: root.aptDone && root.flatState !== "loading" && root.merged.length === 0
+                visible: root.apkDone && root.flatState !== "loading" && root.merged.length === 0
                 text: "no matching apps"
                 font.pixelSize: 24; font.weight: Theme.fontLight
             }
@@ -305,10 +339,23 @@ Item {
         }
 
         PivotPage {
-            title: "installed"
+            title: "games"
+            Hint { visible: root.games.length === 0; text: root.flatState === "offline" ? "offline: no games to show." : "loading..." }
+            Repeater {
+                model: root.games
+                StoreRow {
+                    required property var modelData
+                    item: modelData
+                    onClicked: root.openDetail(modelData)
+                }
+            }
+        }
+
+        PivotPage {
+            title: "my apps"
             Hint { visible: !root.instLoaded; text: "loading..." }
             Hint { visible: root.instLoaded && root.instItems.length === 0; text: "nothing installed yet" }
-            Hint { visible: root.instItems.length > 0; text: root.instItems.length + " apps (user-installed apt packages and flatpaks)" }
+            Hint { visible: root.instItems.length > 0; text: root.instItems.length + " apps (installed by you: apk packages and flatpaks)" }
             Repeater {
                 model: root.instItems
                 StoreRow {
@@ -328,10 +375,10 @@ Item {
             }
             Row {
                 spacing: 12
-                MetroButton { text: "check"; enabled2: !root.updChecking && !be.busy; onClicked: { root.updChecking = true; be.checkUpdates(true) } }
+                MetroButton { text: "check"; enabled2: !root.updChecking && !be.busy; onClicked: root.doCheck() }
                 MetroButton {
                     text: "update all"; accentFill: true; enabled2: root.updItems.length > 0 && !be.busy
-                    onClicked: { if (be.escalation === "none") be.openInTerminal("apt", "", "upgrade"); else be.upgradeAll() }
+                    onClicked: { if (be.escalation === "none") be.openInTerminal("apk", "", "upgrade"); else root.doUpdateAll() }
                 }
             }
             Item { width: 1; height: 14 }
@@ -448,7 +495,7 @@ Item {
                         visible: !sheet.inst
                         text: sheet.opHere ? "installing..." : "install"
                         accentFill: true; enabled2: !be.busy
-                        onClicked: { if (be.escalation === "none" && root.cur.source === "apt") be.openInTerminal("apt", root.cur.id, "install"); else root.doInstall() }
+                        onClicked: { if (be.escalation === "none" && root.cur.source === "apk") be.openInTerminal("apk", root.cur.id, "install"); else root.doInstall() }
                     }
                     MetroButton {
                         visible: sheet.inst
@@ -459,11 +506,11 @@ Item {
                         visible: sheet.inst
                         text: root.confirmRemove ? "tap again to confirm" : "uninstall"
                         enabled2: !be.busy
-                        onClicked: { if (be.escalation === "none" && root.cur.source === "apt") be.openInTerminal("apt", root.cur.id, "remove"); else root.doRemove() }
+                        onClicked: { if (be.escalation === "none" && root.cur.source === "apk") be.openInTerminal("apk", root.cur.id, "remove"); else root.doRemove() }
                     }
                 }
-                Hint { visible: root.cur.source === "apt" && be.escalation === "none"; text: "install/uninstall opens a terminal (sudo needs a password here)." }
-                Hint { visible: root.cur.source === "flathub" && !be.hasFlatpak; text: "flatpak is not installed on this system (apt install flatpak)." }
+                Hint { visible: root.cur.source === "apk" && be.escalation === "none"; text: "install/uninstall opens a terminal (sudo is not available here)." }
+                Hint { visible: root.cur.source === "flathub" && !be.hasFlatpak; text: "flatpak is not installed on this system (apk add flatpak)." }
                 // progress
                 Item {
                     visible: sheet.opHere
@@ -516,6 +563,37 @@ Item {
                     }
                 }
                 MetroButton { width: parent.width; text: "close"; onClicked: root.detailOpen = false }
+            }
+        }
+    }
+
+    // ---- sudo password prompt (apk needs root; kept in memory only, verified with `sudo -S -v`)
+    Item {
+        anchors.fill: parent
+        visible: root.pwOpen
+        z: 10
+        Rectangle { anchors.fill: parent; color: Theme.pageBg; opacity: 0.96 }
+        MouseArea { anchors.fill: parent }
+        Column {
+            x: 18; y: root.topInset + 60; width: parent.width - 36; spacing: 14
+            Text { text: "password"; color: Theme.text; font.family: Theme.font; font.pixelSize: 44; font.weight: Theme.fontLight }
+            Text {
+                width: parent.width; wrapMode: Text.WordWrap
+                text: "installing system packages needs your account password (sudo). it stays in memory until you close the store."
+                color: Theme.textDim; font.family: Theme.font; font.pixelSize: 20
+            }
+            MetroTextField {
+                id: pwField
+                width: parent.width
+                placeholder: "password"
+                echoMode: TextInput.Password
+                onAccepted: be.checkPassword(text)
+            }
+            Text { visible: root.pwError !== ""; text: root.pwError; color: Theme.accent; font.family: Theme.font; font.pixelSize: 20 }
+            Row {
+                spacing: 12
+                MetroButton { text: "ok"; accentFill: true; onClicked: be.checkPassword(pwField.text) }
+                MetroButton { text: "cancel"; onClicked: root.pwOpen = false }
             }
         }
     }

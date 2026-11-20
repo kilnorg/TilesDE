@@ -22,29 +22,29 @@
 namespace {
 const char *kApi = "https://flathub.org/api/v2";
 
-bool validApt(const QString &s) {
-    static const QRegularExpression re("^[a-z0-9][a-z0-9+.\\-]{0,100}$");
+bool validApk(const QString &s) {
+    static const QRegularExpression re("^[a-z0-9][a-z0-9+._\\-]{0,100}$");
     return re.match(s).hasMatch();
 }
 bool validFlat(const QString &s) {
     static const QRegularExpression re("^[A-Za-z0-9][A-Za-z0-9._\\-]{0,200}$");
     return re.match(s).hasMatch();
 }
-bool validId(const QString &src, const QString &id) { return src == "apt" ? validApt(id) : (src == "flathub" && validFlat(id)); }
+bool validId(const QString &src, const QString &id) { return src == "apk" ? validApk(id) : (src == "flathub" && validFlat(id)); }
 
-// curated apt packages per category (looked up in the real apt index; absent ones are simply not shown)
+// curated apk packages per category (looked up in the real apk index; absent ones are simply not shown)
 const QHash<QString, QStringList> &aptCurated() {
     static const QHash<QString, QStringList> m = {
-        {"internet", {"firefox-esr", "chromium", "thunderbird", "transmission-gtk", "newsboat", "epiphany-browser", "links2", "irssi", "weechat"}},
-        {"media", {"vlc", "mpv", "cmus", "audacity", "ffmpeg", "rhythmbox", "kodi", "obs-studio", "handbrake"}},
-        {"graphics", {"gimp", "inkscape", "krita", "imagemagick", "darktable", "blender", "scribus", "gthumb"}},
-        {"office", {"libreoffice", "evince", "calcurse", "abiword", "gnumeric", "okular", "zathura"}},
-        {"utilities", {"keepassxc", "htop", "mc", "tmux", "neofetch", "ncdu", "ranger", "btop", "file-roller"}},
-        {"development", {"git", "geany", "vim", "python3", "nodejs", "neovim", "gcc", "cmake", "golang"}},
-        {"games", {"supertux", "extremetuxracer", "gnuchess", "frozen-bubble", "0ad", "minetest", "neverball", "supertuxkart"}},
-        {"system", {"gparted", "synaptic", "timeshift", "bleachbit", "baobab", "gnome-disk-utility"}},
-        {"education", {"stellarium", "gcompris-qt", "geogebra", "kalzium", "kgeography"}},
-        {"science", {"octave", "kalgebra", "celestia", "gnuplot", "r-base"}},
+        {"internet", {"firefox", "epiphany", "chromium", "geary", "tuba", "fractal", "newsflash", "transmission", "newsboat", "irssi", "weechat"}},
+        {"media", {"mpv", "vlc", "amberol", "lollypop", "kasts", "celluloid", "audacity", "ffmpeg", "cmus", "obs-studio"}},
+        {"graphics", {"gimp", "inkscape", "krita", "loupe", "drawing", "imagemagick", "darktable", "scribus"}},
+        {"office", {"libreoffice", "papers", "evince", "calcurse", "gnumeric", "okular", "zathura", "abiword"}},
+        {"utilities", {"keepassxc", "htop", "mc", "tmux", "ncdu", "btop", "file-roller", "gnome-calculator", "fastfetch"}},
+        {"development", {"git", "geany", "vim", "python3", "nodejs", "neovim", "gcc", "cmake", "go", "rust"}},
+        {"games", {"supertux", "supertuxkart", "gnome-chess", "gnome-mines", "luanti", "neverball", "extremetuxracer", "0ad", "frozen-bubble"}},
+        {"system", {"gnome-disk-utility", "gnome-system-monitor", "baobab", "gparted", "bleachbit"}},
+        {"education", {"stellarium", "gcompris", "kalzium", "kgeography"}},
+        {"science", {"octave", "gnuplot", "celestia", "kalgebra"}},
     };
     return m;
 }
@@ -199,47 +199,68 @@ void StoreBackend::refresh() {
     if (geteuid() == 0) { m_escalation = "root"; emit capsChanged(); }
     else {
         m_escalation = "none";
-        if (!QStandardPaths::findExecutable("pkexec").isEmpty()) m_escalation = "pkexec";
         emit capsChanged();
         if (!QStandardPaths::findExecutable("sudo").isEmpty())
             runProc("sudo", {"-n", "true"}, [this](int code, const QString &) {
-                if (code == 0) m_escalation = "sudo";
+                m_escalation = code == 0 ? "sudo" : "sudopw";   // sudopw: needs the user's password (setPassword / checkPassword)
                 emit capsChanged();
             }, 5000);
     }
     loadInstalled();
 }
 
+void StoreBackend::checkPassword(const QString &pw) {
+    auto *pr = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("LC_ALL", "C");
+    pr->setProcessEnvironment(env);
+    connect(pr, &QProcess::started, pr, [pr, pw] { pr->write((pw + "\n").toUtf8()); pr->closeWriteChannel(); });
+    connect(pr, &QProcess::errorOccurred, this, [this, pr](QProcess::ProcessError e) { if (e == QProcess::FailedToStart) { emit passwordChecked(false); pr->deleteLater(); } });
+    connect(pr, &QProcess::finished, this, [this, pr, pw](int code, QProcess::ExitStatus) {
+        const bool ok = code == 0;
+        if (ok) { m_pw = pw; emit capsChanged(); }
+        emit passwordChecked(ok);
+        pr->deleteLater();
+    });
+    pr->start("sudo", {"-S", "-k", "-p", "", "-v"});
+    QTimer::singleShot(10000, pr, [pr] { pr->kill(); });
+}
+
 void StoreBackend::loadInstalled() {
-    QString fmt = QStringLiteral("${Package}\t${db:Status-Abbrev}\t${Version}\t${binary:Summary}\n");
-    runProc("dpkg-query", {"-W", "-f=" + fmt}, [this](int, const QString &out) {
-        struct Pkg { QString ver, sum; };
-        auto pkgs = QSharedPointer<QHash<QString, Pkg>>::create();
-        for (const QString &l : out.split('\n', Qt::SkipEmptyParts)) {
-            const QStringList f = l.split('\t');
-            if (f.size() < 3 || !f[1].startsWith("ii")) continue;
-            (*pkgs)[f[0]] = {f[2], f.value(3)};
+    // world file = what the user asked for (minus version pins); `apk list -I` gives versions of everything installed
+    QSet<QString> world;
+    QFile wf("/etc/apk/world");
+    if (wf.open(QIODevice::ReadOnly))
+        for (const QByteArray &l : wf.readAll().split('\n')) {
+            QString n = QString::fromUtf8(l).trimmed();
+            n.remove(QRegularExpression("[<>=~].*$"));
+            if (!n.isEmpty() && !n.startsWith('.') && !n.startsWith('!') && validApk(n)) world.insert(n);
         }
-        runProc("apt-mark", {"showmanual"}, [this, pkgs](int, const QString &mout) {
-            const QStringList ml = mout.split('\n', Qt::SkipEmptyParts);
-            const QSet<QString> manual(ml.begin(), ml.end());
-            auto finish = [this, pkgs, manual](const QVariantList &flat) {
-                QVariantMap inst;
-                QVariantList list;
-                static const QRegularExpression noise("^(lib|linux-|firmware-|python3-|gir1\\.2-|fonts-|task-|locales)|(-dev|-dbg|-doc|-data|-common)$");
-                for (auto it = pkgs->constBegin(); it != pkgs->constEnd(); ++it) {
-                    inst["apt:" + it.key()] = it->ver;
-                    if (manual.contains(it.key()) && !noise.match(it.key()).hasMatch())
-                        list.append(QVariantMap{{"source", "apt"}, {"id", it.key()}, {"name", it.key()}, {"summary", it->sum}, {"version", it->ver}, {"icon", ""}});
-                }
-                std::sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) { return a.toMap()["name"].toString() < b.toMap()["name"].toString(); });
-                for (const QVariant &v : flat) { const QVariantMap m = v.toMap(); inst["flathub:" + m["id"].toString()] = m["version"].toString(); list.append(m); }
-                m_installed = inst;
-                emit installedChanged();
-                emit installedListReady(list);
-            };
-            if (!m_hasFlatpak) { finish({}); return; }
-            runProc("flatpak", {"list", "--app", "--columns=application,name,version,installation"}, [finish](int, const QString &fout) {
+    runProc("apk", {"list", "-I"}, [this, world](int, const QString &out) {
+        auto vers = QSharedPointer<QHash<QString, QString>>::create();
+        static const QRegularExpression re("^(.+?)-(\\d[^ ]*-r\\d+) ");
+        for (const QString &l : out.split('\n', Qt::SkipEmptyParts)) {
+            const auto m = re.match(l);
+            if (m.hasMatch()) (*vers)[m.captured(1)] = m.captured(2);
+        }
+        QStringList names;
+        static const QRegularExpression noise("^(lib|linux-|firmware-|font-|postmarketos-|device-|soc-|alpine-|musl|busybox|apk-)|(-dev|-doc|-openrc|-lang|-systemd|-bash-completion|-zsh-completion|-fish-completion|-pyc|-libs|-dbg)$");
+        for (const QString &w : world) if (vers->contains(w) && !noise.match(w).hasMatch()) names << w;
+        names.sort();
+        auto finish = [this, vers, names](const QVariantMap &sums, const QVariantList &flat) {
+            QVariantMap inst;
+            QVariantList list;
+            for (auto it = vers->constBegin(); it != vers->constEnd(); ++it) inst["apk:" + it.key()] = it.value();
+            for (const QString &n : names)
+                list.append(QVariantMap{{"source", "apk"}, {"id", n}, {"name", n}, {"summary", sums.value(n).toString()}, {"version", vers->value(n)}, {"icon", ""}});
+            for (const QVariant &v : flat) { const QVariantMap m = v.toMap(); inst["flathub:" + m["id"].toString()] = m["version"].toString(); list.append(m); }
+            m_installed = inst;
+            emit installedChanged();
+            emit installedListReady(list);
+        };
+        auto withFlat = [this, finish](const QVariantMap &sums) {
+            if (!m_hasFlatpak) { finish(sums, {}); return; }
+            runProc("flatpak", {"list", "--app", "--columns=application,name,version,installation"}, [finish, sums](int, const QString &fout) {
                 QVariantList flat;
                 for (const QString &l : fout.split('\n', Qt::SkipEmptyParts)) {
                     const QStringList f = l.split('\t');
@@ -247,27 +268,42 @@ void StoreBackend::loadInstalled() {
                     flat.append(QVariantMap{{"source", "flathub"}, {"id", f[0].trimmed()}, {"name", f[1].trimmed()}, {"summary", "flatpak " + f.value(3).trimmed()},
                         {"version", f.value(2).trimmed()}, {"icon", ""}, {"installation", f.value(3).trimmed()}});
                 }
-                finish(flat);
+                finish(sums, flat);
             }, 15000);
+        };
+        if (names.isEmpty()) { withFlat({}); return; }
+        QStringList args = {"info", "-d"}; args += names;
+        runProc("apk", args, [withFlat](int, const QString &dout) {
+            QVariantMap sums;
+            static const QRegularExpression hdr("^(.+?)-\\d[^ ]*-r\\d+ description:$");
+            QString cur;
+            for (const QString &l : dout.split('\n')) {
+                const auto m = hdr.match(l);
+                if (m.hasMatch()) { cur = m.captured(1); continue; }
+                if (!cur.isEmpty() && !l.trimmed().isEmpty()) { sums[cur] = l.trimmed(); cur.clear(); }
+            }
+            withFlat(sums);
         }, 15000);
     }, 15000);
 }
 
 // ---------------------------------------------------------------- browse / search
 void StoreBackend::aptSummaries(const QStringList &pkgs, std::function<void(QVariantList)> cb) {
-    // one anchored regex search: tolerates packages missing from the index (apt-cache show would fail for the whole batch)
+    // one exact-name search for the whole batch; names missing from the index just don't appear
     QStringList names;
-    for (const QString &p : pkgs) if (validApt(p)) names << QRegularExpression::escape(p);
+    for (const QString &p : pkgs) if (validApk(p)) names << p;
     if (names.isEmpty()) { cb({}); return; }
-    runProc("apt-cache", {"search", "--names-only", "^(" + names.join('|') + ")$"}, [cb, pkgs](int, const QString &out) {
+    QStringList args = {"search", "-e", "-v"}; args += names;
+    runProc("apk", args, [cb, pkgs](int, const QString &out) {
         QHash<QString, QString> sums;
+        static const QRegularExpression re("^(.+?)-\\d[^ ]*-r\\d+ - (.*)$");
         for (const QString &l : out.split('\n', Qt::SkipEmptyParts)) {
-            const int i = l.indexOf(" - ");
-            if (i > 0) sums[l.left(i)] = l.mid(i + 3);
+            const auto m = re.match(l);
+            if (m.hasMatch()) sums[m.captured(1)] = m.captured(2);
         }
         QVariantList items;
         for (const QString &p : pkgs)   // keep curated order
-            if (sums.contains(p)) items.append(QVariantMap{{"source", "apt"}, {"id", p}, {"name", p}, {"summary", sums[p]}, {"icon", ""}, {"category", ""}, {"version", ""}, {"developer", ""}});
+            if (sums.contains(p)) items.append(QVariantMap{{"source", "apk"}, {"id", p}, {"name", p}, {"summary", sums[p]}, {"icon", ""}, {"category", ""}, {"version", ""}, {"developer", ""}});
         cb(items);
     });
 }
@@ -280,7 +316,7 @@ void StoreBackend::browse(int token, const QString &category, int page) {
         else pk = aptCurated().value(cat);
         aptSummaries(pk, [this, token, cat](QVariantList items) {
             for (QVariant &v : items) { QVariantMap m = v.toMap(); m["category"] = cat; v = m; }
-            emit results(token, "apt", items, 1, false, false);
+            emit results(token, "apk", items, 1, false, false);
         });
     }
     QUrl u(QString(kApi) + (cat == "all" ? "/collection/popular" : "/collection/category/" + flatCat().value(cat)));
@@ -301,29 +337,30 @@ void StoreBackend::browse(int token, const QString &category, int page) {
 
 void StoreBackend::search(int token, const QString &query) {
     const QString q = query.trimmed();
-    if (q.size() < 2) { emit results(token, "apt", {}, 1, false, false); emit results(token, "flathub", {}, 1, false, false); return; }
-    QStringList args = {"search", "--names-only"};
+    if (q.size() < 2) { emit results(token, "apk", {}, 1, false, false); emit results(token, "flathub", {}, 1, false, false); return; }
+    QStringList args = {"search", "-v", "-d"};
     const QStringList words = q.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-    for (const QString &w : words) args << QRegularExpression::escape(w);
+    for (const QString &w : words) if (validApk(w.toLower())) args << w.toLower();
     const bool wantLib = q.startsWith("lib");
-    runProc("apt-cache", args, [this, token, q, wantLib](int code, const QString &out) {
-        if (code == -1) { emit searchFailed(token, "apt", "apt-cache not available"); emit results(token, "apt", {}, 1, false, false); return; }
+    runProc("apk", args, [this, token, q, wantLib](int code, const QString &out) {
+        if (code == -1) { emit searchFailed(token, "apk", "apk not available"); emit results(token, "apk", {}, 1, false, false); return; }
         struct R { QString n, s; int rank; };
         QList<R> rs;
-        static const QRegularExpression noise("(-dev|-dbg|-doc|-data|-common|-dbgsym)$");
+        static const QRegularExpression noise("(-dev|-doc|-openrc|-lang|-systemd|-bash-completion|-zsh-completion|-fish-completion|-pyc|-dbg|-static|-libs|-common|-data)$");
+        static const QRegularExpression re("^(.+?)-\\d[^ ]*-r\\d+ - (.*)$");
         const QString lq = q.toLower();
         for (const QString &l : out.split('\n', Qt::SkipEmptyParts)) {
-            const int i = l.indexOf(" - ");
-            if (i <= 0) continue;
-            const QString n = l.left(i);
-            if (!wantLib && (n.startsWith("lib") || noise.match(n).hasMatch())) continue;
-            rs.append({n, l.mid(i + 3), n == lq ? 0 : (n.startsWith(lq) ? 1 : 2)});
+            const auto m = re.match(l);
+            if (!m.hasMatch()) continue;
+            const QString n = m.captured(1);
+            if (!wantLib && (n.startsWith("lib") || n.startsWith("py3-") || n.startsWith("font-") || noise.match(n).hasMatch())) continue;
+            rs.append({n, m.captured(2), n == lq ? 0 : (n.startsWith(lq) ? 1 : (n.contains(lq) ? 2 : 3))});
         }
         std::stable_sort(rs.begin(), rs.end(), [](const R &a, const R &b) { return a.rank != b.rank ? a.rank < b.rank : a.n.size() < b.n.size(); });
         QVariantList items;
         for (const R &r : rs.mid(0, 40))
-            items.append(QVariantMap{{"source", "apt"}, {"id", r.n}, {"name", r.n}, {"summary", r.s}, {"icon", ""}, {"category", ""}, {"version", ""}, {"developer", ""}});
-        emit results(token, "apt", items, 1, false, false);
+            items.append(QVariantMap{{"source", "apk"}, {"id", r.n}, {"name", r.n}, {"summary", r.s}, {"icon", ""}, {"category", ""}, {"version", ""}, {"developer", ""}});
+        emit results(token, "apk", items, 1, false, false);
     });
     QJsonObject body{{"query", q}};
     getJson(QUrl(QString(kApi) + "/search"), QJsonDocument(body).toJson(QJsonDocument::Compact), [this, token](bool ok, bool cached, const QJsonDocument &d) {
@@ -342,32 +379,31 @@ void StoreBackend::search(int token, const QString &query) {
 // ---------------------------------------------------------------- details
 void StoreBackend::details(const QString &source, const QString &id) {
     if (!validId(source, id)) { emit detailsFailed(source, id, "invalid package id"); return; }
-    if (source == "apt") {
-        runProc("apt-cache", {"show", "--no-all-versions", id}, [this, id](int code, const QString &out) {
-            if (code != 0 || out.trimmed().isEmpty()) { emit detailsFailed("apt", id, "package not found in the apt index"); return; }
-            QVariantMap d{{"source", "apt"}, {"id", id}, {"name", id}, {"icon", ""}, {"screenshots", QVariantList()}};
-            QString desc, key; QStringList longDesc;
-            bool inDesc = false;
+    if (source == "apk") {
+        runProc("apk", {"info", "-d", "-w", "-s", id}, [this, id](int code, const QString &out) {
+            if (code != 0 || out.trimmed().isEmpty()) { emit detailsFailed("apk", id, "package not found in the apk index"); return; }
+            QVariantMap d{{"source", "apk"}, {"id", id}, {"name", id}, {"icon", ""}, {"screenshots", QVariantList()}};
+            static const QRegularExpression hdr("^(.+?)-(\\d[^ ]*-r\\d+) ([a-z ]+):$");
+            QString key; QStringList body;
+            auto flush = [&] {
+                const QString t = body.join(' ').trimmed();
+                if (key == "description") { d["summary"] = t; d["description"] = t; }
+                else if (key == "webpage") d["homepage"] = t;
+                else if (key == "installed size") {
+                    const QStringList p = t.split(' ');
+                    double v = p.value(0).toDouble();
+                    const QString u = p.value(1);
+                    d["installedSize"] = static_cast<qlonglong>(v * (u == "GiB" ? 1073741824.0 : u == "MiB" ? 1048576.0 : u == "KiB" ? 1024.0 : 1.0));
+                }
+                else if (key == "depends on") d["depends"] = body.join(", ");
+                body.clear();
+            };
             for (const QString &l : out.split('\n')) {
-                if (l.isEmpty()) break;   // first stanza only
-                if (l.startsWith(' ') && inDesc) { const QString t = l.trimmed(); longDesc << (t == "." ? QString() : t); continue; }
-                inDesc = false;
-                const int c = l.indexOf(": ");
-                if (c < 0) continue;
-                const QString k = l.left(c), v = l.mid(c + 2).trimmed();
-                if (k == "Description") { desc = v; inDesc = true; }
-                else if (k == "Version") d["version"] = v;
-                else if (k == "Homepage") d["homepage"] = v;
-                else if (k == "Section") d["category"] = v;
-                else if (k == "Maintainer") d["developer"] = v;
-                else if (k == "Installed-Size") d["installedSize"] = v.toLongLong() * 1024;
-                else if (k == "Size") d["downloadSize"] = v.toLongLong();
-                else if (k == "Depends") d["depends"] = v;
+                const auto m = hdr.match(l);
+                if (m.hasMatch()) { flush(); key = m.captured(3); d["version"] = m.captured(2); continue; }
+                if (!l.trimmed().isEmpty()) body << l.trimmed();
             }
-            QString text;
-            for (const QString &l : longDesc) text += l.isEmpty() ? "\n\n" : (text.isEmpty() || text.endsWith("\n\n") ? "" : " ") + l;
-            d["summary"] = desc;
-            d["description"] = text.trimmed();
+            flush();
             emit detailsReady(d);
         });
         return;
@@ -401,28 +437,23 @@ void StoreBackend::details(const QString &source, const QString &id) {
 // ---------------------------------------------------------------- updates
 void StoreBackend::checkUpdates(bool refreshIndex) {
     auto list = [this](bool refreshed, const QString &note) {
-        runProc("apt", {"list", "--upgradable"}, [this, refreshed, note](int, const QString &out) {
-            QVariantList apt;
+        runProc("apk", {"list", "-u"}, [this, refreshed, note](int, const QString &out) {
+            QVariantList apk;
+            static const QRegularExpression re("^(.+?)-(\\d[^ ]*-r\\d+) .*\\[upgradable from: (.+?)-(\\d[^ ]*-r\\d+)\\]");
             for (const QString &l : out.split('\n', Qt::SkipEmptyParts)) {
-                const int s = l.indexOf('/');
-                if (s <= 0 || l.startsWith("Listing")) continue;
-                const QString name = l.left(s);
-                if (!validApt(name)) continue;
-                const QStringList parts = l.split(' ');
-                const int f = l.indexOf("upgradable from: ");
-                QString from = f >= 0 ? l.mid(f + 17).remove(']').trimmed() : QString();
-                apt.append(QVariantMap{{"source", "apt"}, {"id", name}, {"name", name}, {"text", (from.isEmpty() ? QString() : from + " > ") + parts.value(1)}});
+                const auto m = re.match(l);
+                if (!m.hasMatch() || !validApk(m.captured(1))) continue;
+                apk.append(QVariantMap{{"source", "apk"}, {"id", m.captured(1)}, {"name", m.captured(1)}, {"text", m.captured(4) + " > " + m.captured(2)}});
             }
-            listFlatpakUpdates(refreshed, apt, note);
+            listFlatpakUpdates(refreshed, apk, note);
         }, 30000);
     };
-    if (refreshIndex && m_escalation != "none") {
-        const QStringList pre = privPrefix();
-        QStringList args = pre.mid(1); args << "apt-get" << "update" << "-q";
-        runProc(pre.isEmpty() ? "apt-get" : pre.first(), pre.isEmpty() ? QStringList{"update", "-q"} : args, [list](int code, const QString &) {
-            list(code == 0, code == 0 ? QString() : "could not refresh the apt index (offline?); showing the last known state");
-        }, 120000);
-    } else list(false, refreshIndex ? "no privilege to refresh the apt index (needs passwordless sudo or root)" : QString());
+    if (refreshIndex && (m_escalation == "root" || m_escalation == "sudo" || (m_escalation == "sudopw" && !m_pw.isEmpty()))) {
+        QList<Job> none;
+        runPriv({"apk", "update"}, [list](int code) {
+            list(code == 0, code == 0 ? QString() : "could not refresh the apk index (offline?); showing the last known state");
+        });
+    } else list(false, refreshIndex ? "needs your password to refresh the apk index" : QString());
 }
 
 void StoreBackend::listFlatpakUpdates(bool refreshed, QVariantList apt, const QString &note) {
@@ -441,16 +472,33 @@ void StoreBackend::listFlatpakUpdates(bool refreshed, QVariantList apt, const QS
 // ---------------------------------------------------------------- install / remove / upgrade
 QStringList StoreBackend::privPrefix() const {
     if (m_escalation == "sudo") return {"sudo", "-n"};
-    if (m_escalation == "pkexec") return {"pkexec"};
+    if (m_escalation == "sudopw") return {"sudo", "-S", "-p", ""};
     return {};
+}
+
+// one-shot privileged command (apk update): sudo -S gets the password on stdin
+void StoreBackend::runPriv(const QStringList &cmd, std::function<void(int)> cb) {
+    const QStringList pre = privPrefix();
+    QStringList args = pre.mid(1); args += cmd;
+    auto *pr = new QProcess(this);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("LC_ALL", "C");
+    pr->setProcessEnvironment(env);
+    const bool pw = m_escalation == "sudopw";
+    const QString pass = m_pw;
+    if (pw) connect(pr, &QProcess::started, pr, [pr, pass] { pr->write((pass + "\n").toUtf8()); pr->closeWriteChannel(); });
+    connect(pr, &QProcess::errorOccurred, this, [pr, cb](QProcess::ProcessError e) { if (e == QProcess::FailedToStart) { cb(-1); pr->deleteLater(); } });
+    connect(pr, &QProcess::finished, this, [pr, cb](int code, QProcess::ExitStatus st) { cb(st == QProcess::NormalExit ? code : -2); pr->deleteLater(); });
+    if (pre.isEmpty()) pr->start(cmd.first(), cmd.mid(1)); else pr->start(pre.first(), args);
+    QTimer::singleShot(120000, pr, [pr] { pr->kill(); });
 }
 
 void StoreBackend::install(const QString &source, const QString &id) {
     if (m_busy || !validId(source, id)) return;
     QList<Job> jobs;
-    if (source == "apt") jobs << Job{"apt-get", {"install", "-y", "--no-install-recommends", id}, true, "apt"};
+    if (source == "apk") jobs << Job{"apk", {"add", "--no-progress", id}, true, "apk"};
     else {
-        if (!m_hasFlatpak) { emit opFinished(false, "install " + id, "flatpak is not installed (apt install flatpak)"); return; }
+        if (!m_hasFlatpak) { emit opFinished(false, "install " + id, "flatpak is not installed (apk add flatpak)"); return; }
         jobs << Job{"flatpak", {"remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"}, false, "plain"}
              << Job{"flatpak", {"install", "--user", "-y", "--noninteractive", "flathub", id}, false, "flatpak"};
     }
@@ -460,7 +508,7 @@ void StoreBackend::install(const QString &source, const QString &id) {
 void StoreBackend::remove(const QString &source, const QString &id) {
     if (m_busy || !validId(source, id)) return;
     QList<Job> jobs;
-    if (source == "apt") jobs << Job{"apt-get", {"remove", "-y", id}, true, "apt"};
+    if (source == "apk") jobs << Job{"apk", {"del", "--no-progress", id}, true, "apk"};
     else {
         jobs << Job{"flatpak", {"uninstall", "--user", "-y", "--noninteractive", id}, false, "flatpak"};
     }
@@ -470,15 +518,16 @@ void StoreBackend::remove(const QString &source, const QString &id) {
 void StoreBackend::upgradeAll() {
     if (m_busy) return;
     QList<Job> jobs;
-    jobs << Job{"apt-get", {"upgrade", "-y", "-o", "Dpkg::Options::=--force-confold"}, true, "apt"};
+    jobs << Job{"apk", {"update", "--no-progress"}, true, "apk"} << Job{"apk", {"upgrade", "--no-progress"}, true, "apk"};
     if (m_hasFlatpak) jobs << Job{"flatpak", {"update", "--user", "-y", "--noninteractive"}, false, "flatpak"};
     startOp("updating all apps", "", "", jobs);
 }
 
 void StoreBackend::startOp(const QString &title, const QString &source, const QString &id, const QList<Job> &jobs) {
     bool needRoot = false; for (const Job &j : jobs) needRoot = needRoot || j.root;
-    if (needRoot && m_escalation == "none") {
-        emit opFinished(false, title, "needs administrator rights: passwordless sudo, pkexec or root is not available. use the terminal option.");
+    if (needRoot && (m_escalation == "none" || (m_escalation == "sudopw" && m_pw.isEmpty()))) {
+        emit opFinished(false, title, m_escalation == "none" ? "needs administrator rights: sudo or root is not available. use the terminal option."
+                                                              : "needs your password");
         return;
     }
     m_jobs = jobs; m_jobIdx = 0; m_busy = true; m_cancelled = false;
@@ -495,11 +544,9 @@ void StoreBackend::nextJob() {
     if (j.root) {
         const QStringList pre = privPrefix();
         QStringList full = pre.mid(1);
-        full << "env" << "DEBIAN_FRONTEND=noninteractive" << "LC_ALL=C" << j.program;
-        if (j.kind == "apt") full << "-o" << "APT::Status-Fd=1" << "-o" << "Dpkg::Use-Pty=0";
-        full << j.args;
-        prog = pre.isEmpty() ? "env" : pre.first();
-        args = pre.isEmpty() ? full.mid(1) : full;
+        full << j.program << j.args;
+        prog = pre.isEmpty() ? j.program : pre.first();
+        args = pre.isEmpty() ? j.args : full;
     }
     m_proc = new QProcess(this);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -517,6 +564,10 @@ void StoreBackend::nextJob() {
         if (st != QProcess::NormalExit || code != 0) { finishOp(false, m_lastErr.isEmpty() ? QString("command failed (exit %1)").arg(code) : m_lastErr); return; }
         ++m_jobIdx; nextJob();
     });
+    if (j.root && m_escalation == "sudopw") {
+        const QString pass = m_pw;
+        connect(m_proc, &QProcess::started, m_proc, [this, pass] { m_proc->write((pass + "\n").toUtf8()); m_proc->closeWriteChannel(); });
+    }
     m_proc->start(prog, args);
 }
 
@@ -533,19 +584,19 @@ void StoreBackend::feed(const QByteArray &chunk) {
 void StoreBackend::handleLine(const QString &l) {
     double pct = -2;   // -2 = no progress info in this line
     QString shown = l;
-    if (l.startsWith("pmstatus:") || l.startsWith("dlstatus:")) {
-        const QStringList f = l.split(':');
-        const double v = f.value(2).toDouble();
-        if (l.startsWith("dlstatus:")) m_dlPct = qMax(m_dlPct, v); else m_pmPct = qMax(m_pmPct, v);
-        pct = (m_dlPct * 0.4 + m_pmPct * 0.6) / 100.0;
-        shown = f.mid(3).join(':');
+    static const QRegularExpression step("^\\((\\d+)/(\\d+)\\) ");   // apk: "(2/5) Installing foo (1.0-r0)"
+    const auto sm = step.match(l);
+    if (sm.hasMatch() && m_jobs.value(m_jobIdx).kind == "apk") {
+        const double n = sm.captured(2).toDouble();
+        pct = n > 0 ? (sm.captured(1).toDouble() - 1) / n : 0;
+        shown = l.mid(sm.capturedLength());
     } else {
         static const QRegularExpression pc("(\\d{1,3})%");
         QRegularExpressionMatchIterator it = pc.globalMatch(l);
         QString last; while (it.hasNext()) last = it.next().captured(1);
         if (!last.isEmpty() && m_jobs.value(m_jobIdx).kind == "flatpak") pct = qMin(100, last.toInt()) / 100.0;
-        if (l.startsWith("E:") || l.startsWith("error", Qt::CaseInsensitive) || l.startsWith("Error")) m_lastErr = l;
-        if (l.contains("Permission denied") || l.contains("a password is required")) m_lastErr = l;
+        if (l.startsWith("ERROR", Qt::CaseInsensitive) || l.startsWith("error") || l.startsWith("Error")) m_lastErr = l;
+        if (l.contains("Permission denied") || l.contains("a password is required") || l.contains("incorrect password")) m_lastErr = l;
     }
     if (pct >= 0) {
         const double n = m_jobs.size();
@@ -574,10 +625,10 @@ void StoreBackend::cancel() {
 bool StoreBackend::openApp(const QString &source, const QString &id) {
     if (!validId(source, id)) return false;
     if (source == "flathub") return QProcess::startDetached("flatpak", {"run", id});
-    runProc("dpkg-query", {"-L", id}, [](int, const QString &out) {
+    runProc("apk", {"info", "-L", id}, [](int, const QString &out) {
         for (const QString &l : out.split('\n', Qt::SkipEmptyParts)) {
-            if (!l.startsWith("/usr/share/applications/") || !l.endsWith(".desktop")) continue;
-            QFile f(l); if (!f.open(QIODevice::ReadOnly)) continue;
+            if (!l.contains("usr/share/applications/") || !l.endsWith(".desktop")) continue;
+            QFile f(l.startsWith("/") ? l : "/" + l); if (!f.open(QIODevice::ReadOnly)) continue;
             for (const QByteArray &ln : f.readAll().split('\n')) {
                 if (!ln.startsWith("Exec=")) continue;
                 QString ex = QString::fromUtf8(ln.mid(5)).trimmed();
@@ -595,8 +646,8 @@ bool StoreBackend::openApp(const QString &source, const QString &id) {
 bool StoreBackend::openInTerminal(const QString &source, const QString &id, const QString &action) {
     if (!validId(source, id) && !(id.isEmpty() && action == "upgrade")) return false;
     QString cmd;
-    if (action == "upgrade") cmd = "sudo apt-get upgrade" + QString(m_hasFlatpak ? "; flatpak update --user" : "");
-    else if (source == "apt") cmd = QString("sudo apt-get %1 %2").arg(action == "remove" ? "remove" : "install", id);
+    if (action == "upgrade") cmd = "sudo apk update && sudo apk upgrade" + QString(m_hasFlatpak ? "; flatpak update --user" : "");
+    else if (source == "apk") cmd = QString("sudo apk %1 %2").arg(action == "remove" ? "del" : "add", id);
     else cmd = QString("flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; flatpak %1 --user %2").arg(action == "remove" ? "uninstall" : "install flathub", id);
     return QProcess::startDetached("foot", {"-e", "sh", "-c", cmd + "; echo; printf 'done. press enter to close'; read _x"});
 }

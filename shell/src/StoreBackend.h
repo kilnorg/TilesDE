@@ -11,7 +11,7 @@
 #include <QtQml/qqmlregistration.h>
 
 // Backend for StoreApp.qml. Everything is asynchronous (QProcess / QNetworkAccessManager); nothing blocks the UI.
-// Sources: "apt" (apt-cache / apt-get / dpkg-query) and "flathub" (https://flathub.org/api/v2 + flatpak CLI).
+// Sources: "apk" (apk list/search/info/add/del) and "flathub" (https://flathub.org/api/v2 + flatpak CLI).
 // Items are maps {source, id, name, summary, icon, category, version, developer}.
 // API JSON and images are cached under ~/.cache/tilesde/store (api/ img/), API cache is the offline fallback.
 // Only validated package names / app ids ever reach a process (argument vector, never a shell string).
@@ -25,9 +25,11 @@ class StoreBackend : public QObject {
     Q_PROPERTY(double opProgress READ opProgress NOTIFY opChanged)       // 0..1, -1 = indeterminate
     Q_PROPERTY(QString opSource READ opSource NOTIFY opChanged)
     Q_PROPERTY(QString opId READ opId NOTIFY opChanged)
-    Q_PROPERTY(QString escalation READ escalation NOTIFY capsChanged)    // root | sudo | pkexec | none
+    Q_PROPERTY(QString escalation READ escalation NOTIFY capsChanged)    // root | sudo | sudopw (sudo needs password) | none
+    Q_PROPERTY(bool hasPassword READ hasPassword NOTIFY capsChanged)
+    Q_PROPERTY(bool needsPassword READ needsPassword NOTIFY capsChanged)
     Q_PROPERTY(bool hasFlatpak READ hasFlatpak NOTIFY capsChanged)
-    Q_PROPERTY(QVariantMap installedKeys READ installedKeys NOTIFY installedChanged)  // "apt:pkg" / "flathub:id" -> version
+    Q_PROPERTY(QVariantMap installedKeys READ installedKeys NOTIFY installedChanged)  // "apk:pkg" / "flathub:id" -> version
 public:
     explicit StoreBackend(QObject *p = nullptr);
     bool online() const { return m_online; }
@@ -38,6 +40,8 @@ public:
     QString opSource() const { return m_opSource; }
     QString opId() const { return m_opId; }
     QString escalation() const { return m_escalation; }
+    bool hasPassword() const { return !m_pw.isEmpty(); }
+    bool needsPassword() const { return m_escalation == "sudopw" && m_pw.isEmpty(); }
     bool hasFlatpak() const { return m_hasFlatpak; }
     QVariantMap installedKeys() const { return m_installed; }
 
@@ -45,6 +49,8 @@ public:
     Q_INVOKABLE void browse(int token, const QString &category, int page = 1);
     Q_INVOKABLE void search(int token, const QString &query);
     Q_INVOKABLE void details(const QString &source, const QString &id);
+    Q_INVOKABLE void checkPassword(const QString &pw);              // verifies via sudo -S -v, keeps it in memory only, emits passwordChecked
+    Q_INVOKABLE void forgetPassword() { m_pw.clear(); emit capsChanged(); }
     Q_INVOKABLE void loadInstalled();
     Q_INVOKABLE void checkUpdates(bool refreshIndex);
     Q_INVOKABLE QString cachedImage(const QString &url);             // local path if cached, else "" (and starts fetch)
@@ -61,6 +67,7 @@ signals:
     void onlineChanged();
     void opChanged();
     void capsChanged();
+    void passwordChecked(bool ok);
     void installedChanged();
     void results(int token, const QString &source, const QVariantList &items, int page, bool hasMore, bool offline);
     void searchFailed(int token, const QString &source, const QString &message);
@@ -83,6 +90,7 @@ private:
     void feed(const QByteArray &chunk);
     void handleLine(const QString &line);
     QStringList privPrefix() const;
+    void runPriv(const QStringList &cmd, std::function<void(int)> cb);
     void finishOp(bool ok, const QString &msg);
     void aptSummaries(const QStringList &pkgs, std::function<void(QVariantList)> cb);
     void listFlatpakUpdates(bool aptRefreshed, QVariantList apt, const QString &note);
@@ -95,6 +103,7 @@ private:
     QString m_opTitle, m_opLine, m_opSource, m_opId;
     double m_opProgress = -1;
     QString m_escalation = "none";
+    QString m_pw;
     bool m_hasFlatpak = false;
     QVariantMap m_installed;
     QSet<QString> m_fetching;
