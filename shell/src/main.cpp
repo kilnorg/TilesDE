@@ -7,6 +7,7 @@
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QSize>
+#include <QTimer>
 #include "AppModel.h"
 #include "AppStore.h"
 #include "Sys.h"
@@ -44,16 +45,23 @@ int main(int argc, char **argv) {
     engine.loadFromModule("FlowShell", "Main");
     if (engine.rootObjects().isEmpty()) return 1;
 
-    // frame-time stats (FLOWDE_FPS=1): print avg/max ms per 120 frames of continuous rendering
+    // frame-time stats (FLOWDE_FPS=1): every 2 s with activity print frames, frames >25/>40 ms (dropped vsyncs) and max.
+    // Gaps >250 ms are idle (nothing animating) and ignored, so only animation frames count.
     if (qEnvironmentVariable("FLOWDE_FPS") == "1") {
         auto *w = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
-        static QElapsedTimer t; static qint64 last = 0, sum = 0, mx = 0; static int n = 0;
+        static QElapsedTimer t; static qint64 last = 0, mx = 0; static int n = 0, j25 = 0, j40 = 0;
         t.start();
         QObject::connect(w, &QQuickWindow::frameSwapped, w, [] {
-            qint64 now = t.nsecsElapsed(); if (last) { qint64 d = now - last; sum += d; mx = qMax(mx, d); ++n; }
+            qint64 now = t.nsecsElapsed();
+            if (last) { qint64 d = now - last; if (d < 250000000LL) { ++n; mx = qMax(mx, d); if (d > 25000000LL) ++j25; if (d > 40000000LL) ++j40; } }
             last = now;
-            if (n == 120) { qInfo("frametime avg %.1f ms max %.1f ms (%d frames)", sum / n / 1e6, mx / 1e6, n); sum = mx = 0; n = 0; }
         });
+        auto *rep = new QTimer(w); rep->setInterval(2000);
+        QObject::connect(rep, &QTimer::timeout, w, [] {
+            if (n) qInfo("frames %d jank25 %d jank40 %d max %.1f ms", n, j25, j40, mx / 1e6);
+            n = j25 = j40 = 0; mx = 0;
+        });
+        rep->start();
     }
     return app.exec();
 }
